@@ -1,6 +1,6 @@
 indexing:
   max_memory_mb: 8192
-  max_file_bytes: 1048576      # 1 MB на MVP
+  max_file_bytes: 524288      # 1 MB на MVP (524288, 1048576)
   max_chunks_per_file: 80
   embed_batch_size: 8
   upsert_batch_size: 32

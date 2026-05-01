@@ -16,14 +16,21 @@ def index(
     source: Optional[str] = typer.Option(None, help="Index only selected source"),
     force: bool = typer.Option(False, "--force", help="Reindex unchanged files"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Scan files without indexing"),
+    max_files: Optional[int] = typer.Option(
+        None,
+        "--max-files",
+        help="Index only first N files from selected source",
+    ),
     config_dir: Path = typer.Option(Path("configs"), help="Config directory"),
 ) -> None:
+
     """Index configured sources."""
     result = index_source(
         profile=profile,
         source_name=source,
         force=force,
         dry_run=dry_run,
+        max_files=max_files,
         config_dir=config_dir,
     )
     console.print(result)

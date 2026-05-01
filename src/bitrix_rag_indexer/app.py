@@ -31,6 +31,7 @@ def index_source(
     source_name: str | None,
     force: bool,
     dry_run: bool,
+    max_files: int | None,
     config_dir: Path,
 ) -> str:
     sources_cfg = load_yaml(config_dir / f"sources.{profile}.yaml")
@@ -69,6 +70,9 @@ def index_source(
 
     for source in sources:
         files = scan_source(source)
+
+        if max_files is not None:
+            files = files[:max_files]
 
         with Progress(
             SpinnerColumn(),
@@ -156,6 +160,7 @@ def index_source(
                         store=store,
                         embed_batch_size=int(limits["embed_batch_size"]),
                         upsert_batch_size=int(limits["upsert_batch_size"]),
+                        max_memory_mb=int(limits["max_memory_mb"]),
                     )
 
                     manifest.replace_file(
@@ -221,11 +226,14 @@ def index_chunks_in_batches(
     store: QdrantStore,
     embed_batch_size: int,
     upsert_batch_size: int,
+    max_memory_mb: int,
 ) -> None:
     for chunk_batch in batched(chunks, embed_batch_size):
+        ensure_memory_below_limit(max_memory_mb)
         texts = [chunk.text_for_embedding for chunk in chunk_batch]
         vectors = embedder.embed(texts)
 
+        ensure_memory_below_limit(max_memory_mb)
         points = []
 
         for chunk, vector in zip(chunk_batch, vectors):
