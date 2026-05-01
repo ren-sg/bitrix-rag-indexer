@@ -37,7 +37,10 @@ sources:
       # Bitrix translations / localization noise
       - "lang/**"
       - "**/lang/**"
+      - "locale/**"
       - "**/locale/**"
+      - "user_lang/**"
+      - "**/user_lang/**"
 
       # Built/minified/source-map noise
       - "**/*.min.js"
