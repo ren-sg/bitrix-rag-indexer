@@ -45,30 +45,34 @@ class QdrantStore:
         )
 
     def search(self, query_vector: list[float], limit: int) -> list[dict[str, Any]]:
-        hits = self.client.search(
+        response = self.client.query_points(
             collection_name=self.collection,
-            query_vector=(self.vector_name, query_vector),
+            query=query_vector,
+            using=self.vector_name,
             limit=limit,
             with_payload=True,
+            with_vectors=False,
         )
 
         return [
             {
-                "score": hit.score,
-                "path": hit.payload.get("rel_path") or hit.payload.get("path"),
-                "text": hit.payload.get("text", ""),
-                "payload": hit.payload,
+                "score": point.score,
+                "path": point.payload.get("rel_path") or point.payload.get("path"),
+                "text": point.payload.get("text", ""),
+                "payload": point.payload,
             }
-            for hit in hits
+            for point in response.points
         ]
 
     def stats(self) -> dict[str, Any]:
         info = self.client.get_collection(self.collection)
+
         return {
             "collection": self.collection,
             "points_count": info.points_count,
-            "vectors_count": info.vectors_count,
-            "status": info.status,
+            "indexed_vectors_count": getattr(info, "indexed_vectors_count", None),
+            "segments_count": getattr(info, "segments_count", None),
+            "status": str(info.status),
         }
 
     def _distance(self) -> Distance:
