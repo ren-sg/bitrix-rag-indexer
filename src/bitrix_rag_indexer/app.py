@@ -10,7 +10,8 @@ from bitrix_rag_indexer.storage.qdrant_client import QdrantStore
 from bitrix_rag_indexer.utils.files import read_text
 from bitrix_rag_indexer.state.hashes import sha256_text
 from bitrix_rag_indexer.state.manifest import Manifest
-
+from bitrix_rag_indexer.chunking.text_chunker import chunk_text
+from bitrix_rag_indexer.parsing.detect_language import detect_language
 
 def index_source(
     profile: str,
@@ -60,17 +61,34 @@ def index_source(
             if old_chunk_ids:
                 store.delete_points(old_chunk_ids)
 
-            chunks = chunk_markdown(
-                text=text,
-                path=file_path,
-                config=chunking_cfg["markdown"],
-            )
+            language = detect_language(file_path)
+
+            if language == "markdown":
+                chunks = chunk_markdown(
+                    text=text,
+                    path=file_path,
+                    config=chunking_cfg["markdown"],
+                )
+            else:
+                chunk_config = chunking_cfg["code"] if language in {"php", "javascript", "typescript", "vue"} else chunking_cfg["text"]
+
+                chunks = chunk_text(
+                    text=text,
+                    path=file_path,
+                    language=language,
+                    config=chunk_config,
+                )
 
             vectors = embedder.embed([chunk.text_for_embedding for chunk in chunks])
 
             points = []
             for chunk, vector in zip(chunks, vectors):
-                payload = build_payload(source=source, file_path=file_path, chunk=chunk)
+                payload = build_payload(
+                    source=source,
+                    file_path=file_path,
+                    chunk=chunk,
+                    language=language,
+                )
                 points.append(
                     {
                         "id": chunk.chunk_id,

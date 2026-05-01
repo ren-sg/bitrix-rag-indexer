@@ -1,11 +1,15 @@
 from pathlib import Path
 from typing import Any
 
-from bitrix_rag_indexer.chunking.markdown_chunker import Chunk
 from bitrix_rag_indexer.state.hashes import sha256_text
 
 
-def build_payload(source: dict[str, Any], file_path: Path, chunk: Chunk) -> dict[str, Any]:
+def build_payload(
+    source: dict[str, Any],
+    file_path: Path,
+    chunk: Any,
+    language: str,
+) -> dict[str, Any]:
     root = Path(source["root"]).resolve()
     rel_path = file_path.resolve().relative_to(root).as_posix()
 
@@ -16,7 +20,7 @@ def build_payload(source: dict[str, Any], file_path: Path, chunk: Chunk) -> dict
         "source_type": source["type"],
         "source": metadata.get("source", source["name"]),
         "area": metadata.get("area"),
-        "language": metadata.get("language", "markdown"),
+        "language": language,
         "path": file_path.as_posix(),
         "rel_path": rel_path,
         "start_line": chunk.start_line,

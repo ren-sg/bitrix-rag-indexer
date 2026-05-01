@@ -16,3 +16,11 @@ uv run bitrix-rag search "что делает модуль im"
 ```
 Indexed files=3, chunks=3
 ```
+
+
+#### Запуск
+
+**Индексация каталога `local` в битрикс окружении**
+```bash
+uv run bitrix-rag index --profile mvp --source project_local
+```

@@ -1,14 +1,17 @@
 from pathlib import Path
-from fnmatch import fnmatch
+
+import pathspec
 
 
 def scan_source(source: dict) -> list[Path]:
-    root = Path(source["root"]).resolve()
+    root = Path(source["root"]).expanduser().resolve()
     include = source.get("include", ["**/*"])
     exclude = source.get("exclude", [])
 
     if not root.exists():
         raise FileNotFoundError(f"Source root does not exist: {root}")
+
+    exclude_spec = pathspec.PathSpec.from_lines("gitwildmatch", exclude)
 
     files: list[Path] = []
 
@@ -19,7 +22,7 @@ def scan_source(source: dict) -> list[Path]:
 
             rel = path.relative_to(root).as_posix()
 
-            if any(fnmatch(rel, ex) for ex in exclude):
+            if exclude_spec.match_file(rel):
                 continue
 
             files.append(path)
