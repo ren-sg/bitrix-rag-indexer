@@ -32,6 +32,7 @@ def run_eval(
     for case in cases:
         case_id = str(case["id"])
         query = str(case["query"])
+        group = str(case.get("group") or "ungrouped")
         limit = int(case.get("limit", default_limit))
         expected = normalize_expected(case)
 
@@ -74,6 +75,8 @@ def run_eval(
             {
                 "id": case_id,
                 "query": query,
+                "group": group,
+                "expected": expected,
                 "first_rank": first_rank,
                 "matched_path": matched_path,
                 "hit_at_5": case_hit_at_5,
@@ -83,6 +86,8 @@ def run_eval(
         )
 
     total = len(cases)
+    by_group = build_group_summary(rows)
+    failed_cases = [case for case in rows if not case["hit_at_10"]]
 
     return {
         "eval_file": str(eval_path),
@@ -92,6 +97,8 @@ def run_eval(
         "hit_at_5_rate": hit_at_5 / total if total else 0.0,
         "hit_at_10_rate": hit_at_10 / total if total else 0.0,
         "cases": rows,
+        "by_group": by_group,
+        "failed_cases": failed_cases,
     }
 
 
@@ -104,6 +111,8 @@ def empty_eval_result(eval_path: Path) -> dict[str, Any]:
         "hit_at_5_rate": 0.0,
         "hit_at_10_rate": 0.0,
         "cases": [],
+        "by_group": {},
+        "failed_cases": [],
     }
 
 
@@ -278,3 +287,35 @@ def resolve_eval_path(
         return default_path
 
     return Path("eval") / f"queries.{profile}.example.yaml"
+
+
+def build_group_summary(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    summary: dict[str, dict[str, Any]] = {}
+
+    for row in rows:
+        group = str(row.get("group") or "ungrouped")
+
+        if group not in summary:
+            summary[group] = {
+                "total": 0,
+                "hit_at_5": 0,
+                "hit_at_10": 0,
+                "hit_at_5_rate": 0.0,
+                "hit_at_10_rate": 0.0,
+            }
+
+        item = summary[group]
+        item["total"] += 1
+
+        if row["hit_at_5"]:
+            item["hit_at_5"] += 1
+
+        if row["hit_at_10"]:
+            item["hit_at_10"] += 1
+
+    for item in summary.values():
+        total = item["total"]
+        item["hit_at_5_rate"] = item["hit_at_5"] / total if total else 0.0
+        item["hit_at_10_rate"] = item["hit_at_10"] / total if total else 0.0
+
+    return dict(sorted(summary.items()))

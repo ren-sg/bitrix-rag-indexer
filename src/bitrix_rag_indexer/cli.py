@@ -132,6 +132,7 @@ def eval_command(
     table = Table(title="Search eval")
 
     table.add_column("id")
+    table.add_column("group")
     table.add_column("rank", justify="right")
     table.add_column("hit@5", justify="center")
     table.add_column("hit@10", justify="center")
@@ -144,6 +145,7 @@ def eval_command(
 
         table.add_row(
             case["id"],
+            case["group"],
             rank_text,
             "yes" if case["hit_at_5"] else "no",
             "yes" if case["hit_at_10"] else "no",
@@ -161,6 +163,42 @@ def eval_command(
         f"hit@10={result['hit_at_10']}/{result['total']} "
         f"({result['hit_at_10_rate']:.0%})"
     )
+
+    if result.get("by_group"):
+        group_table = Table(title="By group")
+        group_table.add_column("group")
+        group_table.add_column("total", justify="right")
+        group_table.add_column("hit@5", justify="right")
+        group_table.add_column("hit@10", justify="right")
+
+        for group, item in result["by_group"].items():
+            total = item["total"]
+            group_table.add_row(
+                group,
+                str(total),
+                f"{item['hit_at_5']}/{total} ({item['hit_at_5_rate']:.0%})",
+                f"{item['hit_at_10']}/{total} ({item['hit_at_10_rate']:.0%})",
+            )
+
+        console.print(group_table)
+
+    failed_cases = result.get("failed_cases") or []
+    if failed_cases:
+        failed_table = Table(title="Failed cases")
+        failed_table.add_column("id")
+        failed_table.add_column("group")
+        failed_table.add_column("query")
+        failed_table.add_column("top paths")
+
+        for case in failed_cases:
+            failed_table.add_row(
+                case["id"],
+                case["group"],
+                case["query"],
+                "\n".join(case["top_paths"]),
+            )
+
+        console.print(failed_table)
 
 @app.command()
 def prune(
