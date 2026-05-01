@@ -24,6 +24,7 @@ from bitrix_rag_indexer.storage.qdrant_client import QdrantStore
 from bitrix_rag_indexer.utils.batching import batched
 from bitrix_rag_indexer.utils.files import file_size, read_text, should_skip_by_size
 from bitrix_rag_indexer.utils.memory import ensure_memory_below_limit, get_rss_mb
+from bitrix_rag_indexer.search.filters import SearchFilters, build_qdrant_filter
 
 
 def index_source(
@@ -280,6 +281,7 @@ def search_query(
     limit: int,
     config_dir: Path,
     score_threshold: float | None = None,
+    filters: SearchFilters | None = None,
 ) -> list[dict[str, Any]]:
     qdrant_cfg = load_yaml(config_dir / "qdrant.yaml")
     embeddings_cfg = load_yaml(config_dir / "embeddings.yaml")
@@ -287,14 +289,17 @@ def search_query(
     embedder = DenseEmbedder(embeddings_cfg["dense"])
     store = QdrantStore(qdrant_cfg)
 
+    store.ensure_payload_indexes()
+
     query_vector = embedder.embed([query])[0]
+    query_filter = build_qdrant_filter(filters)
 
     return store.search(
         query_vector=query_vector,
         limit=limit,
         score_threshold=score_threshold,
+        query_filter=query_filter,
     )
-
 
 def show_stats(config_dir: Path) -> dict[str, Any]:
     qdrant_cfg = load_yaml(config_dir / "qdrant.yaml")

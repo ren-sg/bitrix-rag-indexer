@@ -5,6 +5,8 @@ import typer
 from rich.console import Console
 
 from bitrix_rag_indexer.app import index_source, search_query, show_stats
+from bitrix_rag_indexer.search.filters import SearchFilters
+from bitrix_rag_indexer.search.format_results import format_search_result
 
 app = typer.Typer(no_args_is_help=True)
 console = Console()
@@ -39,14 +41,34 @@ def index(
 @app.command()
 def search(
     query: str = typer.Argument(..., help="Search query"),
-    limit: int = typer.Option(5, help="Number of results"),
+    limit: int = typer.Option(5, "--limit", "-n", help="Number of results"),
+    source: Optional[str] = typer.Option(None, "--source", help="Filter by source_name"),
+    lang: Optional[str] = typer.Option(None, "--lang", help="Filter by language"),
+    path: Optional[str] = typer.Option(None, "--path", help="Filter by rel_path text"),
+    score_threshold: Optional[float] = typer.Option(
+        None,
+        "--score-threshold",
+        help="Minimal Qdrant score",
+    ),
     config_dir: Path = typer.Option(Path("configs"), help="Config directory"),
 ) -> None:
     """Search indexed chunks."""
-    results = search_query(query=query, limit=limit, config_dir=config_dir)
+    filters = SearchFilters(
+        source=source,
+        lang=lang,
+        path=path,
+    )
+
+    results = search_query(
+        query=query,
+        limit=limit,
+        config_dir=config_dir,
+        score_threshold=score_threshold,
+        filters=filters,
+    )
+
     for item in results:
-        console.rule(f"[bold]{item['score']:.4f}[/bold] {item['path']}")
-        console.print(item["text"][:1200])
+        console.print(format_search_result(item))
 
 
 @app.command()

@@ -25,6 +25,7 @@ sources:
       - "**/*.md"
     exclude:
       - "**/.git/**"
+      - "**/lang/**"
       - "**/cache/**"
       - "**/managed_cache/**"
       - "**/stack_cache/**"

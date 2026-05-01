@@ -2,6 +2,8 @@ from typing import Any
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, PointIdsList, VectorParams
+from qdrant_client import models
+from bitrix_rag_indexer.storage.payload_indexes import ensure_payload_indexes
 
 
 class QdrantStore:
@@ -16,18 +18,18 @@ class QdrantStore:
         collections = self.client.get_collections().collections
         existing = {collection.name for collection in collections}
 
-        if self.collection in existing:
-            return
+        if self.collection not in existing:
+            self.client.create_collection(
+                collection_name=self.collection,
+                vectors_config={
+                    self.vector_name: VectorParams(
+                        size=vector_size,
+                        distance=self._distance(),
+                    )
+                },
+            )
 
-        self.client.create_collection(
-            collection_name=self.collection,
-            vectors_config={
-                self.vector_name: VectorParams(
-                    size=vector_size,
-                    distance=self._distance(),
-                )
-            },
-        )
+        self.ensure_payload_indexes()
 
     def upsert(self, points: list[dict[str, Any]]) -> None:
         qdrant_points = [
@@ -49,26 +51,34 @@ class QdrantStore:
         query_vector: list[float],
         limit: int,
         score_threshold: float | None = None,
+        query_filter: models.Filter | None = None,
     ) -> list[dict[str, Any]]:
         response = self.client.query_points(
             collection_name=self.collection,
             query=query_vector,
             using=self.vector_name,
+            query_filter=query_filter,
             limit=limit,
             score_threshold=score_threshold,
             with_payload=True,
             with_vectors=False,
         )
 
-        return [
-            {
-                "score": point.score,
-                "path": point.payload.get("rel_path") or point.payload.get("path"),
-                "text": point.payload.get("text", ""),
-                "payload": point.payload,
-            }
-            for point in response.points
-        ]
+        results: list[dict[str, Any]] = []
+
+        for point in response.points:
+            payload = point.payload or {}
+
+            results.append(
+                {
+                    "score": point.score,
+                    "path": payload.get("rel_path") or payload.get("path"),
+                    "text": payload.get("text", ""),
+                    "payload": payload,
+                }
+            )
+
+        return results
 
     def stats(self) -> dict[str, Any]:
         info = self.client.get_collection(self.collection)
@@ -100,4 +110,10 @@ class QdrantStore:
             collection_name=self.collection,
             points_selector=PointIdsList(points=point_ids),
             wait=True,
+        )
+
+    def ensure_payload_indexes(self) -> None:
+        ensure_payload_indexes(
+            client=self.client,
+            collection_name=self.collection,
         )
