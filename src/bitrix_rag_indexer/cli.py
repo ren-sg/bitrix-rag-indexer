@@ -14,10 +14,16 @@ console = Console()
 def index(
     profile: str = typer.Option("mvp", help="Config profile name"),
     source: Optional[str] = typer.Option(None, help="Index only selected source"),
+    force: bool = typer.Option(False, "--force", help="Reindex unchanged files"),
     config_dir: Path = typer.Option(Path("configs"), help="Config directory"),
 ) -> None:
     """Index configured sources."""
-    result = index_source(profile=profile, source_name=source, config_dir=config_dir)
+    result = index_source(
+        profile=profile,
+        source_name=source,
+        force=force,
+        config_dir=config_dir,
+    )
     console.print(result)
 
 

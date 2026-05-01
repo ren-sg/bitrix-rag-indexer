@@ -13,6 +13,8 @@ dependencies = [
     "qdrant-client[fastembed]>=1.12.0",
     "fastembed>=0.4.0",
     "xxhash>=3.5.0",
+    "pathspec>=0.12.1",
+    "python-dotenv>=1.0.1",
 ]
 
 [project.scripts]

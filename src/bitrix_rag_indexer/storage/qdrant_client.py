@@ -1,7 +1,7 @@
 from typing import Any
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, PointStruct, VectorParams
+from qdrant_client.models import Distance, PointStruct, PointIdsList, VectorParams
 
 
 class QdrantStore:
@@ -85,3 +85,13 @@ class QdrantStore:
             return Distance.EUCLID
 
         raise ValueError(f"Unsupported distance: {self.distance}")
+
+    def delete_points(self, point_ids: list[str]) -> None:
+        if not point_ids:
+            return
+
+        self.client.delete(
+            collection_name=self.collection,
+            points_selector=PointIdsList(points=point_ids),
+            wait=True,
+        )

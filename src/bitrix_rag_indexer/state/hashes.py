@@ -12,13 +12,12 @@ def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def stable_chunk_id(path: str, ordinal: int, text: str) -> str:
+def stable_chunk_id(path: str, ordinal: int, text: str | None = None) -> str:
     """
     Qdrant point ID must be UUID or unsigned integer.
 
-    We still use sha256 internally for stable content hashing,
-    but convert final point ID to deterministic UUID.
+    Point ID should be stable for the same source path and chunk ordinal.
+    Content hash is stored separately in payload/manifest.
     """
-    content_hash = sha256_text(text)
-    raw = f"{path}:{ordinal}:{content_hash}"
+    raw = f"{path}:{ordinal}"
     return str(uuid.uuid5(QDRANT_POINT_NAMESPACE, raw))

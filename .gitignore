@@ -1,5 +1,9 @@
 # Project specify
-/langflow_data
+
+# Cache
+.pytest_cache/
+.ruff_cache/
+.indexer/
 
 # Python bytecode
 __pycache__/

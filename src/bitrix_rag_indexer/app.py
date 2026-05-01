@@ -8,9 +8,16 @@ from bitrix_rag_indexer.embeddings.dense import DenseEmbedder
 from bitrix_rag_indexer.metadata.payload import build_payload
 from bitrix_rag_indexer.storage.qdrant_client import QdrantStore
 from bitrix_rag_indexer.utils.files import read_text
+from bitrix_rag_indexer.state.hashes import sha256_text
+from bitrix_rag_indexer.state.manifest import Manifest
 
 
-def index_source(profile: str, source_name: str | None, config_dir: Path) -> str:
+def index_source(
+    profile: str,
+    source_name: str | None,
+    force: bool,
+    config_dir: Path,
+) -> str:
     sources_cfg = load_yaml(config_dir / f"sources.{profile}.yaml")
     qdrant_cfg = load_yaml(config_dir / "qdrant.yaml")
     embeddings_cfg = load_yaml(config_dir / "embeddings.yaml")
@@ -24,16 +31,35 @@ def index_source(profile: str, source_name: str | None, config_dir: Path) -> str
     store = QdrantStore(qdrant_cfg)
     store.ensure_collection(vector_size=embedder.vector_size)
 
-    total_files = 0
+    manifest = Manifest(Path(".indexer/state/index.sqlite"))
+
+    indexed_files = 0
+    skipped_files = 0
     total_chunks = 0
 
     for source in sources:
         files = scan_source(source)
-        total_files += len(files)
 
-        points = []
         for file_path in files:
             text = read_text(file_path)
+            file_hash = sha256_text(text)
+
+            if not force and manifest.is_file_unchanged(
+                source_name=source["name"],
+                path=file_path,
+                file_hash=file_hash,
+            ):
+                skipped_files += 1
+                continue
+
+            old_chunk_ids = manifest.get_chunk_ids(
+                source_name=source["name"],
+                path=file_path,
+            )
+
+            if old_chunk_ids:
+                store.delete_points(old_chunk_ids)
+
             chunks = chunk_markdown(
                 text=text,
                 path=file_path,
@@ -42,6 +68,7 @@ def index_source(profile: str, source_name: str | None, config_dir: Path) -> str
 
             vectors = embedder.embed([chunk.text_for_embedding for chunk in chunks])
 
+            points = []
             for chunk, vector in zip(chunks, vectors):
                 payload = build_payload(source=source, file_path=file_path, chunk=chunk)
                 points.append(
@@ -52,11 +79,24 @@ def index_source(profile: str, source_name: str | None, config_dir: Path) -> str
                     }
                 )
 
-        if points:
-            store.upsert(points)
-            total_chunks += len(points)
+            if points:
+                store.upsert(points)
 
-    return f"Indexed files={total_files}, chunks={total_chunks}"
+            manifest.replace_file(
+                source_name=source["name"],
+                path=file_path,
+                file_hash=file_hash,
+                chunk_ids=[chunk.chunk_id for chunk in chunks],
+            )
+
+            indexed_files += 1
+            total_chunks += len(chunks)
+
+    return (
+        f"Indexed files={indexed_files}, "
+        f"chunks={total_chunks}, "
+        f"skipped={skipped_files}"
+    )
 
 
 def search_query(query: str, limit: int, config_dir: Path) -> list[dict[str, Any]]:
