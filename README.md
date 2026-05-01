@@ -51,3 +51,18 @@ uv run bitrix-rag prune --profile mvp --source project_local
 ```bash
 uv run bitrix-rag eval --profile mvp
 ```
+
+```bash
+expected:
+  path_contains_any: []
+  path_contains_all: []
+  path_not_contains: []
+  text_contains_any: []
+  text_contains_all: []
+  text_not_contains: []
+```
+### Тесты
+
+```bash
+uv run pytest
+```

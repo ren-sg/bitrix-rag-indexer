@@ -141,9 +141,7 @@ def index_source(
                         source_name=source["name"],
                         path=file_path,
                     )
-
-                    if old_chunk_ids:
-                        store.delete_points(old_chunk_ids)
+                    new_chunk_ids = [chunk.chunk_id for chunk in chunks]
 
                     if not chunks:
                         manifest.replace_file(
@@ -151,7 +149,12 @@ def index_source(
                             path=file_path,
                             file_hash=file_hash,
                             chunk_ids=[],
+                            chunk_fts_records=[],
                         )
+
+                        if old_chunk_ids:
+                            store.delete_points(old_chunk_ids)
+
                         counters["empty"] += 1
                         continue
 
@@ -178,9 +181,17 @@ def index_source(
                         source_name=source["name"],
                         path=file_path,
                         file_hash=file_hash,
-                        chunk_ids=[chunk.chunk_id for chunk in chunks],
+                        chunk_ids=new_chunk_ids,
                         chunk_fts_records=chunk_fts_records,
                     )
+
+                    new_chunk_id_set = set(new_chunk_ids)
+                    old_chunk_ids_to_delete = [
+                        chunk_id for chunk_id in old_chunk_ids if chunk_id not in new_chunk_id_set
+                    ]
+
+                    if old_chunk_ids_to_delete:
+                        store.delete_points(old_chunk_ids_to_delete)
 
                     counters["indexed"] += 1
                     counters["chunks"] += len(chunks)
