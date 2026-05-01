@@ -44,12 +44,18 @@ class QdrantStore:
             points=qdrant_points,
         )
 
-    def search(self, query_vector: list[float], limit: int) -> list[dict[str, Any]]:
+    def search(
+        self,
+        query_vector: list[float],
+        limit: int,
+        score_threshold: float | None = None,
+    ) -> list[dict[str, Any]]:
         response = self.client.query_points(
             collection_name=self.collection,
             query=query_vector,
             using=self.vector_name,
             limit=limit,
+            score_threshold=score_threshold,
             with_payload=True,
             with_vectors=False,
         )
