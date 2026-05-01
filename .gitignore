@@ -1,5 +1,9 @@
 # Project specify
 
+# Local eval datasets may contain project-specific paths and business terms
+eval/queries.*.local.yaml
+eval/queries.mvp.yaml
+
 # Cache
 .pytest_cache/
 .ruff_cache/

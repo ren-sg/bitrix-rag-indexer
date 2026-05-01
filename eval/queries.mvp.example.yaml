@@ -1,0 +1,66 @@
+queries:
+  - id: bitrix_component_template
+    query: "шаблон компонента bitrix template php"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "components"
+        - "template.php"
+
+  - id: bitrix_component_result_modifier
+    query: "подготовка данных компонента result modifier"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "components"
+        - "result_modifier.php"
+
+  - id: bitrix_component_script_js
+    query: "javascript файл компонента bitrix"
+    limit: 10
+    filters:
+      source: project_local
+      lang: javascript
+    expected:
+      path_contains_all:
+        - "components"
+        - "script.js"
+
+  - id: bitrix_ajax_php
+    query: "ajax обработчик bitrix php"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_any:
+        - "ajax.php"
+        - "ajax.old.php"
+
+  - id: bitrix_php_interface_class
+    query: "php класс в php_interface src"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+
+  - id: sprint_migration
+    query: "sprint migration миграция bitrix"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+      path: "migrations"
+    expected:
+      path_contains_any:
+        - "migrations"

@@ -9,3 +9,8 @@ text:
 code:
   max_chars: 2600
   overlap_chars: 300
+
+php:
+  max_chars: 2600
+  overlap_chars: 300
+  max_uses_in_prefix: 24

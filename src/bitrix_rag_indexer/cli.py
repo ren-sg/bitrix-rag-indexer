@@ -117,6 +117,7 @@ def eval_command(
     table.add_column("rank", justify="right")
     table.add_column("hit@5", justify="center")
     table.add_column("hit@10", justify="center")
+    table.add_column("matched path")
     table.add_column("top paths")
 
     for case in result["cases"]:
@@ -128,6 +129,7 @@ def eval_command(
             rank_text,
             "yes" if case["hit_at_5"] else "no",
             "yes" if case["hit_at_10"] else "no",
+            case["matched_path"] or "-",
             "\n".join(case["top_paths"]),
         )
 

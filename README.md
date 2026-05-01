@@ -29,9 +29,13 @@ uv run bitrix-rag index --profile mvp --source project_local --dry-run
 uv run bitrix-rag index --profile mvp --source project_local
 ```
 
-#### Очистка
+#### Очистка и переиндексация
 
 ```bash
+## Re-index
+uv run bitrix-rag index --profile mvp --source project_local --force
+
+## Clear
 curl -X DELETE http://localhost:6333/collections/bitrix_code_mvp
 rm -rf .indexer/state/index.sqlite
 ```

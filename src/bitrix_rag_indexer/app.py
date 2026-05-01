@@ -13,6 +13,7 @@ from rich.progress import (
 
 from bitrix_rag_indexer.chunking.markdown_chunker import chunk_markdown
 from bitrix_rag_indexer.chunking.text_chunker import chunk_text
+from bitrix_rag_indexer.chunking.php_chunker import chunk_php
 from bitrix_rag_indexer.config.loader import load_yaml
 from bitrix_rag_indexer.discovery.scanner import scan_source
 from bitrix_rag_indexer.embeddings.dense import DenseEmbedder
@@ -204,9 +205,17 @@ def make_chunks(
             config=chunking_cfg["markdown"],
         )
 
+    if language == "php":
+        return chunk_php(
+            text=text,
+            path=file_path,
+            language=language,
+            config=chunking_cfg.get("php", chunking_cfg["code"]),
+        )
+
     chunk_config = (
         chunking_cfg["code"]
-        if language in {"php", "javascript", "typescript", "vue"}
+        if language in {"javascript", "typescript", "vue"}
         else chunking_cfg["text"]
     )
 
