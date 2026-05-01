@@ -1,5 +1,5 @@
 search:
-  default_mode: dense
+  default_mode: qdrant-hybrid
 
 hybrid:
   dense_candidates: 50

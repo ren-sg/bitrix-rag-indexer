@@ -4,4 +4,5 @@ dense:
   batch_size: 32
 
 sparse:
-  enabled: false
+  enabled: true
+  model: "Qdrant/bm25"

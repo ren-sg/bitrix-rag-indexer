@@ -11,7 +11,7 @@ def run_eval(
     config_dir: Path,
     eval_file: Path | None = None,
     default_limit: int = 10,
-    mode: str = "dense",
+    mode: str | None = None,
 ) -> dict[str, Any]:
     eval_path = resolve_eval_path(
         profile=profile,

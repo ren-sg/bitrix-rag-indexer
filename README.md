@@ -46,7 +46,7 @@ uv run bitrix-rag prune --profile mvp --source project_local --dry-run
 uv run bitrix-rag prune --profile mvp --source project_local
 ```
 
-### Проверка eval
+#### Проверка eval
 
 ```bash
 uv run bitrix-rag eval --profile mvp
@@ -61,8 +61,13 @@ expected:
   text_contains_all: []
   text_not_contains: []
 ```
-### Тесты
+#### Тесты
 
 ```bash
 uv run pytest
+```
+
+#### Debug
+```bash
+uv run bitrix-rag search "BX.ajax" --mode hybrid --source project_local --limit 5 --debug
 ```

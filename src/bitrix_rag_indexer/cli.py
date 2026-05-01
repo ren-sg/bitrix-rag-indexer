@@ -55,9 +55,9 @@ def search(
     ),
     config_dir: Path = typer.Option(Path("configs"), help="Config directory"),
     mode: str = typer.Option(
-        "dense",
+        None,
         "--mode",
-        help="Search mode: dense, lexical, hybrid",
+        help="Search mode: dense, lexical, hybrid, qdrant-hybrid",
     ),
     debug: bool = typer.Option(
         False,
@@ -107,9 +107,9 @@ def eval_command(
         help="Default search limit for eval cases",
     ),
     mode: str = typer.Option(
-        "dense",
+        None,
         "--mode",
-        help="Search mode: dense, lexical, hybrid",
+        help="Search mode: dense, lexical, hybrid, qdrant-hybrid",
     ),
 ) -> None:
     """Evaluate search quality against expected paths."""

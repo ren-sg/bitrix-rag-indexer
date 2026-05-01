@@ -54,8 +54,7 @@ def index_source(
         raise ValueError(f"No sources matched: {source_name}")
 
     embedder = DenseEmbedder(embeddings_cfg["dense"])
-    store = QdrantStore(qdrant_cfg)
-
+    store = QdrantStore(qdrant_cfg, sparse_config=embeddings_cfg.get("sparse"))
     if not dry_run:
         store.ensure_collection(vector_size=embedder.vector_size)
 
@@ -301,6 +300,7 @@ def index_chunks_in_batches(
                 {
                     "id": chunk.chunk_id,
                     "vector": vector,
+                    "sparse_text": chunk.text_for_embedding,
                     "payload": payload,
                 }
             )
@@ -334,7 +334,7 @@ def search_query(
     config_dir: Path,
     score_threshold: float | None = None,
     filters: SearchFilters | None = None,
-    mode: str = "dense",
+    mode: str | None = None,
 ) -> list[dict[str, Any]]:
     qdrant_cfg = load_yaml(config_dir / "qdrant.yaml")
     embeddings_cfg = load_yaml(config_dir / "embeddings.yaml")
@@ -347,12 +347,12 @@ def search_query(
     lexical_candidates = int(hybrid_cfg.get("lexical_candidates", 50))
     rrf_k = int(hybrid_cfg.get("rrf_k", 60))
 
-    store = QdrantStore(qdrant_cfg)
+    store = QdrantStore(qdrant_cfg, sparse_config=embeddings_cfg.get("sparse"))
     store.ensure_payload_indexes()
 
     mode = (mode or default_mode).lower()
 
-    if mode not in {"dense", "lexical", "hybrid"}:
+    if mode not in {"dense", "lexical", "hybrid", "qdrant-hybrid"}:
         raise ValueError(f"Unsupported search mode: {mode}")
 
     if mode == "lexical":
@@ -366,6 +366,16 @@ def search_query(
     embedder = DenseEmbedder(embeddings_cfg["dense"])
     query_vector = embedder.embed([query])[0]
     query_filter = build_qdrant_filter(filters)
+
+    if mode == "qdrant-hybrid":
+        return store.search_qdrant_hybrid(
+            query_text=query,
+            query_vector=query_vector,
+            limit=limit,
+            dense_limit=dense_candidates,
+            sparse_limit=lexical_candidates,
+            query_filter=query_filter,
+        )
 
     dense_results = store.search(
         query_vector=query_vector,
