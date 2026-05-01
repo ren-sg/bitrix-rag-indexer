@@ -1,0 +1,29 @@
+# Project specify
+/langflow_data
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment variables
+.env
+
+# Logs
+*.log
+
+# Temporary / swap / backup files
+*~
+*.swp
+*.swo
+*.tmp
+*.bak
+*.orig
+
+# OS junk
+.DS_Store
+Thumbs.db
