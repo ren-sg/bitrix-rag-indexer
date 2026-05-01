@@ -35,3 +35,9 @@ uv run bitrix-rag index --profile mvp --source project_local
 curl -X DELETE http://localhost:6333/collections/bitrix_code_mvp
 rm -rf .indexer/state/index.sqlite
 ```
+
+### Проверка eval
+
+```bash
+uv run bitrix-rag eval --profile mvp
+```

@@ -3,10 +3,12 @@ from typing import Optional
 
 import typer
 from rich.console import Console
+from rich.table import Table
 
 from bitrix_rag_indexer.app import index_source, search_query, show_stats
 from bitrix_rag_indexer.search.filters import SearchFilters
 from bitrix_rag_indexer.search.format_results import format_search_result
+from bitrix_rag_indexer.eval.runner import run_eval
 
 app = typer.Typer(no_args_is_help=True)
 console = Console()
@@ -77,3 +79,65 @@ def stats(
 ) -> None:
     """Show collection stats."""
     console.print(show_stats(config_dir=config_dir))
+
+@app.command("eval")
+def eval_command(
+    profile: str = typer.Option("mvp", help="Config profile name"),
+    config_dir: Path = typer.Option(Path("configs"), help="Config directory"),
+    eval_file: Optional[Path] = typer.Option(
+        None,
+        "--file",
+        help="Eval queries yaml file",
+    ),
+    limit: int = typer.Option(
+        10,
+        "--limit",
+        help="Default search limit for eval cases",
+    ),
+) -> None:
+    """Evaluate search quality against expected paths."""
+    result = run_eval(
+        profile=profile,
+        config_dir=config_dir,
+        eval_file=eval_file,
+        default_limit=limit,
+    )
+
+    console.print(
+        f"[bold]Eval file:[/bold] {result['eval_file']}"
+    )
+
+    if result["total"] == 0:
+        console.print("[yellow]No eval queries found.[/yellow]")
+        return
+
+    table = Table(title="Search eval")
+
+    table.add_column("id")
+    table.add_column("rank", justify="right")
+    table.add_column("hit@5", justify="center")
+    table.add_column("hit@10", justify="center")
+    table.add_column("top paths")
+
+    for case in result["cases"]:
+        rank = case["first_rank"]
+        rank_text = str(rank) if rank is not None else "-"
+
+        table.add_row(
+            case["id"],
+            rank_text,
+            "yes" if case["hit_at_5"] else "no",
+            "yes" if case["hit_at_10"] else "no",
+            "\n".join(case["top_paths"]),
+        )
+
+    console.print(table)
+
+    console.print(
+        "[bold]Summary:[/bold] "
+        f"total={result['total']}, "
+        f"hit@5={result['hit_at_5']}/{result['total']} "
+        f"({result['hit_at_5_rate']:.0%}), "
+        f"hit@10={result['hit_at_10']}/{result['total']} "
+        f"({result['hit_at_10_rate']:.0%})"
+    )
