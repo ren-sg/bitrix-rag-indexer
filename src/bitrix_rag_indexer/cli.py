@@ -59,6 +59,11 @@ def search(
         "--mode",
         help="Search mode: dense, lexical, hybrid",
     ),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        help="Show rank/score internals for dense/lexical/hybrid results",
+    ),
 ) -> None:
     """Search indexed chunks."""
     filters = SearchFilters(
@@ -77,7 +82,7 @@ def search(
     )
 
     for item in results:
-        console.print(format_search_result(item))
+        console.print(format_search_result(item, debug=debug))
 
 
 @app.command()

@@ -338,11 +338,19 @@ def search_query(
 ) -> list[dict[str, Any]]:
     qdrant_cfg = load_yaml(config_dir / "qdrant.yaml")
     embeddings_cfg = load_yaml(config_dir / "embeddings.yaml")
+    ranking_cfg = load_yaml(config_dir / "ranking.yaml")
+    search_cfg = ranking_cfg.get("search", {})
+    hybrid_cfg = ranking_cfg.get("hybrid", {})
+
+    default_mode = str(search_cfg.get("default_mode", "dense"))
+    dense_candidates = int(hybrid_cfg.get("dense_candidates", 50))
+    lexical_candidates = int(hybrid_cfg.get("lexical_candidates", 50))
+    rrf_k = int(hybrid_cfg.get("rrf_k", 60))
 
     store = QdrantStore(qdrant_cfg)
     store.ensure_payload_indexes()
 
-    mode = mode.lower()
+    mode = (mode or default_mode).lower()
 
     if mode not in {"dense", "lexical", "hybrid"}:
         raise ValueError(f"Unsupported search mode: {mode}")
@@ -361,7 +369,7 @@ def search_query(
 
     dense_results = store.search(
         query_vector=query_vector,
-        limit=limit if mode == "dense" else max(limit * 4, 30),
+        limit=limit if mode == "dense" else dense_candidates,
         score_threshold=score_threshold,
         query_filter=query_filter,
     )
@@ -371,7 +379,7 @@ def search_query(
 
     lexical_results = search_lexical_only(
         query=query,
-        limit=max(limit * 4, 30),
+        limit=lexical_candidates,
         filters=filters,
         store=store,
     )
@@ -380,6 +388,7 @@ def search_query(
         dense_results=dense_results,
         lexical_results=lexical_results,
         limit=limit,
+        k=rrf_k,
     )
 
 

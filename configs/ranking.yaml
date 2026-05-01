@@ -1,0 +1,7 @@
+search:
+  default_mode: dense
+
+hybrid:
+  dense_candidates: 50
+  lexical_candidates: 50
+  rrf_k: 60
