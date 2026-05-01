@@ -15,6 +15,7 @@ def index(
     profile: str = typer.Option("mvp", help="Config profile name"),
     source: Optional[str] = typer.Option(None, help="Index only selected source"),
     force: bool = typer.Option(False, "--force", help="Reindex unchanged files"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Scan files without indexing"),
     config_dir: Path = typer.Option(Path("configs"), help="Config directory"),
 ) -> None:
     """Index configured sources."""
@@ -22,6 +23,7 @@ def index(
         profile=profile,
         source_name=source,
         force=force,
+        dry_run=dry_run,
         config_dir=config_dir,
     )
     console.print(result)

@@ -20,14 +20,29 @@ def chunk_text(
     language: str,
     config: dict,
 ) -> list[TextChunk]:
+    """
+    Safe fallback chunker.
+
+    Important:
+    - line-based, not recursive;
+    - no while loop with overlap recalculation;
+    - cannot get stuck on the same offset;
+    - handles huge single lines;
+    - keeps line numbers.
+    """
     max_chars = int(config.get("max_chars", 2200))
     overlap_chars = int(config.get("overlap_chars", 250))
+
+    if max_chars <= 0:
+        raise ValueError("max_chars must be greater than 0")
+
+    if overlap_chars >= max_chars:
+        overlap_chars = max_chars // 5
 
     if not text.strip():
         return []
 
-    line_offsets = build_line_offsets(text)
-    parts = split_text_safely(
+    raw_chunks = split_by_lines_safely(
         text=text,
         max_chars=max_chars,
         overlap_chars=overlap_chars,
@@ -35,16 +50,14 @@ def chunk_text(
 
     chunks: list[TextChunk] = []
 
-    for ordinal, part in enumerate(parts, start=1):
-        start_index = part["start"]
-        end_index = part["end"]
-        chunk_text_value = part["text"].strip()
+    for ordinal, raw in enumerate(raw_chunks, start=1):
+        chunk_text_value = raw["text"].strip()
 
         if not chunk_text_value:
             continue
 
-        start_line = line_number_for_offset(line_offsets, start_index)
-        end_line = line_number_for_offset(line_offsets, end_index)
+        start_line = raw["start_line"]
+        end_line = raw["end_line"]
 
         prefix = (
             f"Path: {path.as_posix()}\n"
@@ -74,87 +87,90 @@ def chunk_text(
     return chunks
 
 
-def split_text_safely(
+def split_by_lines_safely(
     text: str,
     max_chars: int,
     overlap_chars: int,
 ) -> list[dict]:
+    lines = text.splitlines(keepends=True)
+
     result: list[dict] = []
-    start = 0
-    text_length = len(text)
 
-    while start < text_length:
-        target_end = min(start + max_chars, text_length)
-        end = find_natural_break(text, start, target_end)
+    current: list[tuple[int, str]] = []
+    current_len = 0
 
-        if end <= start:
-            end = target_end
+    for line_no, line in enumerate(lines, start=1):
+        # Huge generated/minified-like line.
+        # Split it directly into fixed slices.
+        if len(line) > max_chars:
+            if current:
+                result.append(make_raw_chunk(current))
+                current = []
+                current_len = 0
 
-        part = text[start:end]
+            for part in split_huge_line(line, max_chars=max_chars):
+                result.append(
+                    {
+                        "text": part,
+                        "start_line": line_no,
+                        "end_line": line_no,
+                    }
+                )
 
-        result.append(
-            {
-                "start": start,
-                "end": end,
-                "text": part,
-            }
-        )
+            continue
 
-        if end >= text_length:
-            break
+        if current and current_len + len(line) > max_chars:
+            result.append(make_raw_chunk(current))
 
-        start = max(0, end - overlap_chars)
+            current = make_overlap_lines(
+                lines=current,
+                overlap_chars=overlap_chars,
+            )
+            current_len = sum(len(item[1]) for item in current)
+
+        current.append((line_no, line))
+        current_len += len(line)
+
+    if current:
+        result.append(make_raw_chunk(current))
 
     return result
 
 
-def find_natural_break(text: str, start: int, target_end: int) -> int:
-    window = text[start:target_end]
-
-    separators = [
-        "\n\n",
-        "\nclass ",
-        "\nfunction ",
-        "\npublic function ",
-        "\nprotected function ",
-        "\nprivate function ",
-        "\nexport ",
-        "\nconst ",
-        "\nlet ",
-        "\nvar ",
-    ]
-
-    best = -1
-
-    for separator in separators:
-        pos = window.rfind(separator)
-        if pos > best and pos > len(window) * 0.4:
-            best = pos
-
-    if best >= 0:
-        return start + best
-
-    newline_pos = window.rfind("\n")
-    if newline_pos > len(window) * 0.6:
-        return start + newline_pos
-
-    return target_end
+def make_raw_chunk(lines: list[tuple[int, str]]) -> dict:
+    return {
+        "text": "".join(line for _, line in lines),
+        "start_line": lines[0][0],
+        "end_line": lines[-1][0],
+    }
 
 
-def build_line_offsets(text: str) -> list[int]:
-    offsets = [0]
-    for index, char in enumerate(text):
-        if char == "\n":
-            offsets.append(index + 1)
-    return offsets
+def make_overlap_lines(
+    lines: list[tuple[int, str]],
+    overlap_chars: int,
+) -> list[tuple[int, str]]:
+    if overlap_chars <= 0:
+        return []
 
+    selected: list[tuple[int, str]] = []
+    total = 0
 
-def line_number_for_offset(line_offsets: list[int], offset: int) -> int:
-    line_number = 1
-
-    for index, line_offset in enumerate(line_offsets, start=1):
-        if line_offset > offset:
+    for line_no, line in reversed(lines):
+        if selected and total + len(line) > overlap_chars:
             break
-        line_number = index
 
-    return line_number
+        selected.append((line_no, line))
+        total += len(line)
+
+        if total >= overlap_chars:
+            break
+
+    selected.reverse()
+    return selected
+
+
+def split_huge_line(line: str, max_chars: int) -> list[str]:
+    return [
+        line[index : index + max_chars]
+        for index in range(0, len(line), max_chars)
+    ]
