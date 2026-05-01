@@ -1,0 +1,5 @@
+url: "http://localhost:6333"
+collection: "bitrix_code_mvp"
+dense_vector_name: "dense"
+sparse_vector_name: "sparse"
+distance: "Cosine"

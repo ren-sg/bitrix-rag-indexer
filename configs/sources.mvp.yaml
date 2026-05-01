@@ -1,0 +1,13 @@
+profile: "mvp"
+
+sources:
+  - name: "manual"
+    type: "manual"
+    root: "./manual"
+    include:
+      - "**/*.md"
+    exclude: []
+    metadata:
+      source: "manual"
+      area: "manual_notes"
+      language: "markdown"
