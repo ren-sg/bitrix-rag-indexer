@@ -40,6 +40,12 @@ curl -X DELETE http://localhost:6333/collections/bitrix_code_mvp
 rm -rf .indexer/state/index.sqlite
 ```
 
+#### Очистка неиспользуемых данных в manifest
+```bash
+uv run bitrix-rag prune --profile mvp --source project_local --dry-run
+uv run bitrix-rag prune --profile mvp --source project_local
+```
+
 ### Проверка eval
 
 ```bash

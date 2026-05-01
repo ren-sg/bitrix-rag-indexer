@@ -11,6 +11,7 @@ def run_eval(
     config_dir: Path,
     eval_file: Path | None = None,
     default_limit: int = 10,
+    mode: str = "dense",
 ) -> dict[str, Any]:
     eval_path = resolve_eval_path(
         profile=profile,
@@ -49,6 +50,7 @@ def run_eval(
             config_dir=config_dir,
             score_threshold=case.get("score_threshold"),
             filters=filters,
+            mode=mode,
         )
 
         first_match = find_first_expected_match(

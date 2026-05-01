@@ -47,6 +47,18 @@ class SQLiteState:
                 );
 
                 create index if not exists idx_file_chunks_source_path
-                    on file_chunks (source_name, path);
+                on file_chunks (source_name, path);
+
+                create virtual table if not exists chunk_fts using fts5(
+                    chunk_id unindexed,
+                    source_name unindexed,
+                    source_type unindexed,
+                    language unindexed,
+                    path unindexed,
+                    rel_path unindexed,
+                    text,
+                    text_for_embedding,
+                    tokenize='unicode61'
+                );
                 """
             )

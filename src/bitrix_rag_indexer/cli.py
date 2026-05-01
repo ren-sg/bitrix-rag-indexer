@@ -9,6 +9,7 @@ from bitrix_rag_indexer.app import index_source, search_query, show_stats
 from bitrix_rag_indexer.search.filters import SearchFilters
 from bitrix_rag_indexer.search.format_results import format_search_result
 from bitrix_rag_indexer.eval.runner import run_eval
+from bitrix_rag_indexer.app import index_source, prune_source, search_query, show_stats
 
 app = typer.Typer(no_args_is_help=True)
 console = Console()
@@ -53,6 +54,11 @@ def search(
         help="Minimal Qdrant score",
     ),
     config_dir: Path = typer.Option(Path("configs"), help="Config directory"),
+    mode: str = typer.Option(
+        "dense",
+        "--mode",
+        help="Search mode: dense, lexical, hybrid",
+    ),
 ) -> None:
     """Search indexed chunks."""
     filters = SearchFilters(
@@ -67,6 +73,7 @@ def search(
         config_dir=config_dir,
         score_threshold=score_threshold,
         filters=filters,
+        mode=mode,
     )
 
     for item in results:
@@ -94,6 +101,11 @@ def eval_command(
         "--limit",
         help="Default search limit for eval cases",
     ),
+    mode: str = typer.Option(
+        "dense",
+        "--mode",
+        help="Search mode: dense, lexical, hybrid",
+    ),
 ) -> None:
     """Evaluate search quality against expected paths."""
     result = run_eval(
@@ -101,6 +113,7 @@ def eval_command(
         config_dir=config_dir,
         eval_file=eval_file,
         default_limit=limit,
+        mode=mode,
     )
 
     console.print(
@@ -143,3 +156,20 @@ def eval_command(
         f"hit@10={result['hit_at_10']}/{result['total']} "
         f"({result['hit_at_10_rate']:.0%})"
     )
+
+@app.command()
+def prune(
+    profile: str = typer.Option("mvp", help="Config profile name"),
+    source: str = typer.Option(..., "--source", help="Source name to prune"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show stale files without deleting"),
+    config_dir: Path = typer.Option(Path("configs"), help="Config directory"),
+) -> None:
+    """Remove indexed files that no longer match source scan/exclude rules."""
+    result = prune_source(
+        profile=profile,
+        source_name=source,
+        config_dir=config_dir,
+        dry_run=dry_run,
+    )
+
+    console.print(result)

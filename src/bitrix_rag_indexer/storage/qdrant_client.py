@@ -71,6 +71,7 @@ class QdrantStore:
 
             results.append(
                 {
+                    "id": str(point.id),
                     "score": point.score,
                     "path": payload.get("rel_path") or payload.get("path"),
                     "text": payload.get("text", ""),
@@ -117,3 +118,33 @@ class QdrantStore:
             client=self.client,
             collection_name=self.collection,
         )
+
+    def retrieve(self, point_ids: list[str]) -> list[dict[str, Any]]:
+        if not point_ids:
+            return []
+
+        records = self.client.retrieve(
+            collection_name=self.collection,
+            ids=point_ids,
+            with_payload=True,
+            with_vectors=False,
+        )
+
+        by_id: dict[str, dict[str, Any]] = {}
+
+        for record in records:
+            payload = record.payload or {}
+
+            by_id[str(record.id)] = {
+                "id": str(record.id),
+                "score": None,
+                "path": payload.get("rel_path") or payload.get("path"),
+                "text": payload.get("text", ""),
+                "payload": payload,
+            }
+
+        return [
+            by_id[point_id]
+            for point_id in point_ids
+            if point_id in by_id
+        ]

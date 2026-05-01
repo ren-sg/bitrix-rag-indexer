@@ -40,8 +40,10 @@ class Manifest:
         path: Path,
         file_hash: str,
         chunk_ids: list[str],
+        chunk_fts_records: list[dict] | None = None,
     ) -> None:
         path_text = path.as_posix()
+        chunk_fts_records = chunk_fts_records or []
 
         with self.state.connect() as conn:
             conn.execute("begin")
@@ -49,6 +51,14 @@ class Manifest:
             conn.execute(
                 """
                 delete from file_chunks
+                where source_name = ? and path = ?
+                """,
+                (source_name, path_text),
+            )
+
+            conn.execute(
+                """
+                delete from chunk_fts
                 where source_name = ? and path = ?
                 """,
                 (source_name, path_text),
@@ -88,4 +98,94 @@ class Manifest:
                 ],
             )
 
+            if chunk_fts_records:
+                conn.executemany(
+                    """
+                    insert into chunk_fts (
+                        chunk_id,
+                        source_name,
+                        source_type,
+                        language,
+                        path,
+                        rel_path,
+                        text,
+                        text_for_embedding
+                    )
+                    values (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (
+                            item["chunk_id"],
+                            item["source_name"],
+                            item["source_type"],
+                            item["language"],
+                            item["path"],
+                            item["rel_path"],
+                            item["text"],
+                            item["text_for_embedding"],
+                        )
+                        for item in chunk_fts_records
+                    ],
+                )
+
             conn.commit()
+
+    def list_indexed_paths(self, source_name: str) -> list[Path]:
+        with self.state.connect() as conn:
+            rows = conn.execute(
+                """
+                select path
+                from indexed_files
+                where source_name = ?
+                order by path asc
+                """,
+                (source_name,),
+            ).fetchall()
+
+        return [Path(row["path"]) for row in rows]
+
+    def delete_file(self, source_name: str, path: Path) -> None:
+        path_text = path.as_posix()
+
+        with self.state.connect() as conn:
+            conn.execute("begin")
+
+            conn.execute(
+                """
+                delete from file_chunks
+                where source_name = ? and path = ?
+                """,
+                (source_name, path_text),
+            )
+
+            conn.execute(
+                """
+                delete from indexed_files
+                where source_name = ? and path = ?
+                """,
+                (source_name, path_text),
+            )
+
+            if self.sqlite_table_exists(conn, "chunk_fts"):
+                conn.execute(
+                    """
+                    delete from chunk_fts
+                    where source_name = ? and path = ?
+                    """,
+                    (source_name, path_text),
+                )
+
+            conn.commit()
+
+    def sqlite_table_exists(self, conn, table_name: str) -> bool:
+        row = conn.execute(
+            """
+            select name
+            from sqlite_master
+            where type in ('table', 'virtual table')
+            and name = ?
+            """,
+            (table_name,),
+        ).fetchone()
+
+        return row is not None

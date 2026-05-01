@@ -26,6 +26,8 @@ from bitrix_rag_indexer.utils.batching import batched
 from bitrix_rag_indexer.utils.files import file_size, read_text, should_skip_by_size
 from bitrix_rag_indexer.utils.memory import ensure_memory_below_limit, get_rss_mb
 from bitrix_rag_indexer.search.filters import SearchFilters, build_qdrant_filter
+from bitrix_rag_indexer.search.hybrid import rrf_fuse
+from bitrix_rag_indexer.search.lexical import LexicalSearchIndex
 
 
 def index_source(
@@ -165,11 +167,19 @@ def index_source(
                         max_memory_mb=int(limits["max_memory_mb"]),
                     )
 
+                    chunk_fts_records = build_chunk_fts_records(
+                        source=source,
+                        file_path=file_path,
+                        chunks=chunks,
+                        language=language,
+                    )
+
                     manifest.replace_file(
                         source_name=source["name"],
                         path=file_path,
                         file_hash=file_hash,
                         chunk_ids=[chunk.chunk_id for chunk in chunks],
+                        chunk_fts_records=chunk_fts_records,
                     )
 
                     counters["indexed"] += 1
@@ -191,6 +201,28 @@ def index_source(
 
     return format_index_result(counters)
 
+def build_chunk_fts_records(
+    source: dict[str, Any],
+    file_path: Path,
+    chunks: list[Any],
+    language: str,
+) -> list[dict[str, Any]]:
+    root = Path(source["root"]).resolve()
+    rel_path = file_path.resolve().relative_to(root).as_posix()
+
+    return [
+        {
+            "chunk_id": chunk.chunk_id,
+            "source_name": source["name"],
+            "source_type": source["type"],
+            "language": language,
+            "path": file_path.as_posix(),
+            "rel_path": rel_path,
+            "text": chunk.text,
+            "text_for_embedding": chunk.text_for_embedding,
+        }
+        for chunk in chunks
+    ]
 
 def make_chunks(
     text: str,
@@ -291,26 +323,163 @@ def search_query(
     config_dir: Path,
     score_threshold: float | None = None,
     filters: SearchFilters | None = None,
+    mode: str = "dense",
 ) -> list[dict[str, Any]]:
     qdrant_cfg = load_yaml(config_dir / "qdrant.yaml")
     embeddings_cfg = load_yaml(config_dir / "embeddings.yaml")
 
-    embedder = DenseEmbedder(embeddings_cfg["dense"])
     store = QdrantStore(qdrant_cfg)
-
     store.ensure_payload_indexes()
 
+    mode = mode.lower()
+
+    if mode not in {"dense", "lexical", "hybrid"}:
+        raise ValueError(f"Unsupported search mode: {mode}")
+
+    if mode == "lexical":
+        return search_lexical_only(
+            query=query,
+            limit=limit,
+            filters=filters,
+            store=store,
+        )
+
+    embedder = DenseEmbedder(embeddings_cfg["dense"])
     query_vector = embedder.embed([query])[0]
     query_filter = build_qdrant_filter(filters)
 
-    return store.search(
+    dense_results = store.search(
         query_vector=query_vector,
-        limit=limit,
+        limit=limit if mode == "dense" else max(limit * 4, 30),
         score_threshold=score_threshold,
         query_filter=query_filter,
     )
+
+    if mode == "dense":
+        return dense_results
+
+    lexical_results = search_lexical_only(
+        query=query,
+        limit=max(limit * 4, 30),
+        filters=filters,
+        store=store,
+    )
+
+    return rrf_fuse(
+        dense_results=dense_results,
+        lexical_results=lexical_results,
+        limit=limit,
+    )
+
+
+def search_lexical_only(
+    query: str,
+    limit: int,
+    filters: SearchFilters | None,
+    store: QdrantStore,
+) -> list[dict[str, Any]]:
+    lexical = LexicalSearchIndex(Path(".indexer/state/index.sqlite"))
+    lexical_matches = lexical.search(
+        query=query,
+        limit=limit,
+        filters=filters,
+    )
+
+    ids = [item["id"] for item in lexical_matches]
+    retrieved = store.retrieve(ids)
+
+    by_id = {
+        item["id"]: item
+        for item in retrieved
+    }
+
+    results: list[dict[str, Any]] = []
+
+    for lexical_item in lexical_matches:
+        item_id = lexical_item["id"]
+
+        if item_id not in by_id:
+            continue
+
+        result = by_id[item_id]
+        result["score"] = lexical_item["lexical_score"]
+        result["lexical_score"] = lexical_item["lexical_score"]
+        result["lexical_rank"] = lexical_item["rank"]
+
+        results.append(result)
+
+    return results
 
 def show_stats(config_dir: Path) -> dict[str, Any]:
     qdrant_cfg = load_yaml(config_dir / "qdrant.yaml")
     store = QdrantStore(qdrant_cfg)
     return store.stats()
+
+def prune_source(
+    profile: str,
+    source_name: str,
+    config_dir: Path,
+    dry_run: bool = False,
+) -> str:
+    sources_cfg = load_yaml(config_dir / f"sources.{profile}.yaml")
+    qdrant_cfg = load_yaml(config_dir / "qdrant.yaml")
+
+    sources = sources_cfg["sources"]
+    matched_sources = [
+        source
+        for source in sources
+        if source["name"] == source_name
+    ]
+
+    if not matched_sources:
+        raise ValueError(f"No source matched: {source_name}")
+
+    source = matched_sources[0]
+
+    manifest = Manifest(Path(".indexer/state/index.sqlite"))
+    store = QdrantStore(qdrant_cfg)
+
+    current_paths = {
+        path.resolve().as_posix()
+        for path in scan_source(source)
+    }
+
+    indexed_paths = manifest.list_indexed_paths(source_name=source_name)
+
+    stale_paths = [
+        path
+        for path in indexed_paths
+        if path.resolve().as_posix() not in current_paths
+    ]
+
+    deleted_files = 0
+    deleted_chunks = 0
+
+    for path in stale_paths:
+        chunk_ids = manifest.get_chunk_ids(
+            source_name=source_name,
+            path=path,
+        )
+
+        deleted_files += 1
+        deleted_chunks += len(chunk_ids)
+
+        if dry_run:
+            continue
+
+        if chunk_ids:
+            store.delete_points(chunk_ids)
+
+        manifest.delete_file(
+            source_name=source_name,
+            path=path,
+        )
+
+    mode = "dry-run" if dry_run else "deleted"
+
+    return (
+        f"Prune {mode}: "
+        f"source={source_name}, "
+        f"stale_files={deleted_files}, "
+        f"stale_chunks={deleted_chunks}"
+    )
