@@ -11,6 +11,8 @@ code:
   overlap_chars: 300
 
 php:
+  strategy: "tree-sitter"
   max_chars: 2600
   overlap_chars: 300
   max_uses_in_prefix: 24
+  fallback_strategy: "line"
