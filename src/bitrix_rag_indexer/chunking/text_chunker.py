@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 from pathlib import Path
 
 from bitrix_rag_indexer.state.hashes import stable_chunk_id
@@ -12,6 +13,7 @@ class TextChunk:
     start_line: int
     end_line: int
     ordinal: int
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 def chunk_text(

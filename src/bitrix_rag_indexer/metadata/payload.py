@@ -12,14 +12,14 @@ def build_payload(
 ) -> dict[str, Any]:
     root = Path(source["root"]).resolve()
     rel_path = file_path.resolve().relative_to(root).as_posix()
-
     metadata = source.get("metadata", {})
 
-    return {
+    payload = {
         "source_name": source["name"],
         "source_type": source["type"],
         "source": metadata.get("source", source["name"]),
         "area": metadata.get("area"),
+        "module": metadata.get("module"),
         "language": language,
         "path": file_path.as_posix(),
         "rel_path": rel_path,
@@ -29,3 +29,11 @@ def build_payload(
         "content_hash": sha256_text(chunk.text_for_embedding),
         "text": chunk.text,
     }
+
+    chunk_metadata = getattr(chunk, "metadata", {}) or {}
+    for key, value in chunk_metadata.items():
+        if value in (None, "", [], {}):
+            continue
+        payload[key] = value
+
+    return payload

@@ -100,8 +100,42 @@ def chunk_php(
             max_uses=max_uses,
         )
 
-        text_for_embedding = prefix + "\n\n" + chunk_text_value
+        nearest_type = find_nearest_symbol_before(
+            symbols=context.symbols,
+            kinds={"class", "interface", "trait", "enum"},
+            line=start_line,
+        )
+        nearest_function = find_nearest_symbol_before(
+            symbols=context.symbols,
+            kinds={"function", "method"},
+            line=start_line,
+        )
+        symbols_in_chunk = [
+            symbol
+            for symbol in context.symbols
+            if start_line <= symbol.line <= end_line
+        ]
 
+        metadata = {
+            "php_namespace": context.namespace,
+            "php_uses": context.uses[:max_uses],
+            "php_nearest_type_kind": nearest_type.kind if nearest_type else None,
+            "php_nearest_type_name": nearest_type.name if nearest_type else None,
+            "php_nearest_function_kind": nearest_function.kind if nearest_function else None,
+            "php_nearest_function_name": nearest_function.name if nearest_function else None,
+            "php_symbol_names": [symbol.name for symbol in symbols_in_chunk],
+            "php_symbol_kinds": [symbol.kind for symbol in symbols_in_chunk],
+            "php_symbols": [
+                {
+                    "kind": symbol.kind,
+                    "name": symbol.name,
+                    "line": symbol.line,
+                }
+                for symbol in symbols_in_chunk
+            ],
+        }
+
+        text_for_embedding = prefix + "\n\n" + chunk_text_value
         chunk_id = stable_chunk_id(
             path=path.as_posix(),
             ordinal=ordinal,
@@ -116,6 +150,7 @@ def chunk_php(
                 start_line=start_line,
                 end_line=end_line,
                 ordinal=ordinal,
+                metadata=metadata,
             )
         )
 

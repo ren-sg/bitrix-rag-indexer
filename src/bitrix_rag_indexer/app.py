@@ -352,7 +352,7 @@ def search_query(
 
     mode = (mode or default_mode).lower()
 
-    if mode not in {"dense", "lexical", "hybrid", "qdrant-hybrid"}:
+    if mode not in {"dense", "lexical", "hybrid", "qdrant-sparse", "qdrant-hybrid"}:
         raise ValueError(f"Unsupported search mode: {mode}")
 
     if mode == "lexical":
@@ -366,6 +366,13 @@ def search_query(
     embedder = DenseEmbedder(embeddings_cfg["dense"])
     query_vector = embedder.embed([query])[0]
     query_filter = build_qdrant_filter(filters)
+
+    if mode == "qdrant-sparse":
+        return store.search_sparse(
+            query_text=query,
+            limit=limit,
+            query_filter=query_filter,
+        )
 
     if mode == "qdrant-hybrid":
         return store.search_qdrant_hybrid(

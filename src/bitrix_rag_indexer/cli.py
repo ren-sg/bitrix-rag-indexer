@@ -57,7 +57,7 @@ def search(
     mode: str = typer.Option(
         None,
         "--mode",
-        help="Search mode: dense, lexical, hybrid, qdrant-hybrid",
+        help="Search mode: dense, lexical, hybrid, qdrant-sparse, qdrant-hybrid",
     ),
     debug: bool = typer.Option(
         False,

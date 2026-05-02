@@ -220,3 +220,31 @@ class QdrantStore:
             )
 
         return results
+
+    def search_sparse(
+        self,
+        query_text: str,
+        limit: int,
+        query_filter: models.Filter | None = None,
+    ) -> list[dict[str, Any]]:
+        if not self.sparse_enabled:
+            raise ValueError("Qdrant sparse search is disabled in embeddings.sparse config")
+
+        response = self.client.query_points(
+            collection_name=self.collection,
+            query=models.Document(
+                text=query_text,
+                model=self.sparse_model,
+            ),
+            using=self.sparse_vector_name,
+            query_filter=query_filter,
+            limit=limit,
+            with_payload=True,
+            with_vectors=False,
+        )
+
+        results = self._format_points(response.points)
+        for item in results:
+            item["qdrant_sparse_score"] = item["score"]
+
+        return results
