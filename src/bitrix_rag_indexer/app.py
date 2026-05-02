@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Any
+from dataclasses import dataclass
 import gc
 
 from rich.progress import (
@@ -31,6 +32,20 @@ from bitrix_rag_indexer.search.hybrid import rrf_fuse
 from bitrix_rag_indexer.search.lexical import LexicalSearchIndex
 
 
+@dataclass
+class PendingIndexJob:
+    source: dict[str, Any]
+    file_path: Path
+    language: str
+    file_hash: str
+    chunks: list[Any]
+    old_chunk_ids: list[str]
+
+
+def pending_chunk_count(jobs: list[PendingIndexJob]) -> int:
+    return sum(len(job.chunks) for job in jobs)
+
+
 def index_source(
     profile: str,
     source_name: str | None,
@@ -50,6 +65,11 @@ def index_source(
 
     limits = limits_cfg["indexing"]
     sources = sources_cfg["sources"]
+    embed_batch_size = int(limits["embed_batch_size"])
+    upsert_batch_size = int(limits["upsert_batch_size"])
+    max_memory_mb = int(limits["max_memory_mb"])
+
+    flush_chunk_threshold = max(embed_batch_size * 8, upsert_batch_size)
 
     if source_name:
         sources = [src for src in sources if src["name"] == source_name]
@@ -64,6 +84,7 @@ def index_source(
         store.ensure_collection(vector_size=embedder.vector_size)
 
     manifest = Manifest(Path(".indexer/state/index.sqlite"))
+    pending_jobs: list[PendingIndexJob] = []
 
     for source in sources:
         with profiler.measure("scan"):
@@ -176,54 +197,35 @@ def index_source(
                         stats.empty += 1
                         continue
 
-                    index_chunks_in_batches(
-                        chunks=chunks,
-                        source=source,
-                        file_path=file_path,
-                        language=language,
-                        embedder=embedder,
-                        store=store,
-                        embed_batch_size=int(limits["embed_batch_size"]),
-                        upsert_batch_size=int(limits["upsert_batch_size"]),
-                        max_memory_mb=int(limits["max_memory_mb"]),
-                        profiler=profiler,
-                    )
-
-                    with profiler.measure("fts_records"):
-                        chunk_fts_records = build_chunk_fts_records(
+                    pending_jobs.append(
+                        PendingIndexJob(
                             source=source,
                             file_path=file_path,
-                            chunks=chunks,
                             language=language,
-                        )
-
-                    with profiler.measure("manifest_replace"):
-                        manifest.replace_file(
-                            source_name=source["name"],
-                            path=file_path,
                             file_hash=file_hash,
-                            chunk_ids=new_chunk_ids,
-                            chunk_fts_records=chunk_fts_records,
+                            chunks=chunks,
+                            old_chunk_ids=old_chunk_ids,
                         )
+                    )
 
-                    new_chunk_id_set = set(new_chunk_ids)
-                    old_chunk_ids_to_delete = [
-                        chunk_id
-                        for chunk_id in old_chunk_ids
-                        if chunk_id not in new_chunk_id_set
-                    ]
-
-                    if old_chunk_ids_to_delete:
-                        with profiler.measure("delete_old_points"):
-                            store.delete_points(old_chunk_ids_to_delete)
-
-                    stats.record_indexed_file(len(chunks))
+                    if pending_chunk_count(pending_jobs) >= flush_chunk_threshold:
+                        flush_pending_index_jobs(
+                            jobs=pending_jobs,
+                            embedder=embedder,
+                            store=store,
+                            manifest=manifest,
+                            stats=stats,
+                            embed_batch_size=embed_batch_size,
+                            upsert_batch_size=upsert_batch_size,
+                            max_memory_mb=max_memory_mb,
+                            profiler=profiler,
+                        )
 
                     del text
-                    del chunks
 
-                    with profiler.measure("gc"):
-                        gc.collect()
+                    if stats.scanned % 100 == 0:
+                        with profiler.measure("gc"):
+                            gc.collect()
 
                 except Exception:
                     stats.failed += 1
@@ -234,6 +236,18 @@ def index_source(
                 finally:
                     progress.update(task, rss=f"{get_rss_mb():.0f}")
                     progress.advance(task)
+
+                flush_pending_index_jobs(
+                    jobs=pending_jobs,
+                    embedder=embedder,
+                    store=store,
+                    manifest=manifest,
+                    stats=stats,
+                    embed_batch_size=embed_batch_size,
+                    upsert_batch_size=upsert_batch_size,
+                    max_memory_mb=max_memory_mb,
+                    profiler=profiler,
+                )
 
     return format_index_result(stats, profiler)
 
@@ -295,6 +309,105 @@ def make_chunks(
     )
 
 
+def flush_pending_index_jobs(
+    jobs: list[PendingIndexJob],
+    embedder: DenseEmbedder,
+    store: QdrantStore,
+    manifest: Manifest,
+    stats: IndexingStats,
+    embed_batch_size: int,
+    upsert_batch_size: int,
+    max_memory_mb: int,
+    profiler: IndexingProfiler,
+) -> None:
+    if not jobs:
+        return
+
+    flattened: list[tuple[PendingIndexJob, Any]] = [
+        (job, chunk)
+        for job in jobs
+        for chunk in job.chunks
+    ]
+
+    for chunk_batch in batched(flattened, embed_batch_size):
+        with profiler.measure("memory_guard"):
+            ensure_memory_below_limit(max_memory_mb)
+
+        texts = [
+            chunk.text_for_embedding
+            for _, chunk in chunk_batch
+        ]
+
+        with profiler.measure("dense_embed"):
+            vectors = embedder.embed(texts)
+
+        with profiler.measure("memory_guard"):
+            ensure_memory_below_limit(max_memory_mb)
+
+        points = []
+
+        with profiler.measure("build_payload"):
+            for (job, chunk), vector in zip(chunk_batch, vectors):
+                payload = build_payload(
+                    source=job.source,
+                    file_path=job.file_path,
+                    chunk=chunk,
+                    language=job.language,
+                )
+
+                points.append(
+                    {
+                        "id": chunk.chunk_id,
+                        "vector": vector,
+                        "sparse_text": chunk.text_for_embedding,
+                        "payload": payload,
+                    }
+                )
+
+        for point_batch in batched(points, upsert_batch_size):
+            with profiler.measure("qdrant_upsert"):
+                store.upsert(point_batch)
+
+        del texts
+        del vectors
+        del points
+
+    for job in jobs:
+        new_chunk_ids = [chunk.chunk_id for chunk in job.chunks]
+
+        with profiler.measure("fts_records"):
+            chunk_fts_records = build_chunk_fts_records(
+                source=job.source,
+                file_path=job.file_path,
+                chunks=job.chunks,
+                language=job.language,
+            )
+
+        with profiler.measure("manifest_replace"):
+            manifest.replace_file(
+                source_name=job.source["name"],
+                path=job.file_path,
+                file_hash=job.file_hash,
+                chunk_ids=new_chunk_ids,
+                chunk_fts_records=chunk_fts_records,
+            )
+
+        new_chunk_id_set = set(new_chunk_ids)
+        old_chunk_ids_to_delete = [
+            chunk_id
+            for chunk_id in job.old_chunk_ids
+            if chunk_id not in new_chunk_id_set
+        ]
+
+        if old_chunk_ids_to_delete:
+            with profiler.measure("delete_old_points"):
+                store.delete_points(old_chunk_ids_to_delete)
+
+        stats.record_indexed_file(len(job.chunks))
+
+    jobs.clear()
+
+
 def index_chunks_in_batches(
     chunks: list[Any],
     source: dict[str, Any],
@@ -346,9 +459,6 @@ def index_chunks_in_batches(
         del texts
         del vectors
         del points
-
-        with profiler.measure("gc"):
-            gc.collect()
 
 
 def format_index_result(
