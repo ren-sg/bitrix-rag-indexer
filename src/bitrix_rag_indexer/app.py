@@ -25,6 +25,7 @@ from bitrix_rag_indexer.storage.qdrant_client import QdrantStore
 from bitrix_rag_indexer.utils.batching import batched
 from bitrix_rag_indexer.utils.files import file_size, read_text, should_skip_by_size
 from bitrix_rag_indexer.utils.memory import ensure_memory_below_limit, get_rss_mb
+from bitrix_rag_indexer.utils.profiling import IndexingProfiler, IndexingStats
 from bitrix_rag_indexer.search.filters import SearchFilters, build_qdrant_filter
 from bitrix_rag_indexer.search.hybrid import rrf_fuse
 from bitrix_rag_indexer.search.lexical import LexicalSearchIndex
@@ -38,6 +39,9 @@ def index_source(
     max_files: int | None,
     config_dir: Path,
 ) -> str:
+    profiler = IndexingProfiler()
+    stats = IndexingStats()
+
     sources_cfg = load_yaml(config_dir / f"sources.{profile}.yaml")
     qdrant_cfg = load_yaml(config_dir / "qdrant.yaml")
     embeddings_cfg = load_yaml(config_dir / "embeddings.yaml")
@@ -45,8 +49,8 @@ def index_source(
     limits_cfg = load_yaml(config_dir / "limits.yaml")
 
     limits = limits_cfg["indexing"]
-
     sources = sources_cfg["sources"]
+
     if source_name:
         sources = [src for src in sources if src["name"] == source_name]
 
@@ -55,27 +59,20 @@ def index_source(
 
     embedder = DenseEmbedder(embeddings_cfg["dense"])
     store = QdrantStore(qdrant_cfg, sparse_config=embeddings_cfg.get("sparse"))
+
     if not dry_run:
         store.ensure_collection(vector_size=embedder.vector_size)
 
     manifest = Manifest(Path(".indexer/state/index.sqlite"))
 
-    counters = {
-        "scanned": 0,
-        "indexed": 0,
-        "skipped": 0,
-        "empty": 0,
-        "too_large": 0,
-        "failed": 0,
-        "chunks": 0,
-        "bytes": 0,
-    }
-
     for source in sources:
-        files = scan_source(source)
+        with profiler.measure("scan"):
+            files = scan_source(source)
 
         if max_files is not None:
             files = files[:max_files]
+
+        stats.discovered += len(files)
 
         with Progress(
             SpinnerColumn(),
@@ -98,63 +95,85 @@ def index_source(
                     rss=f"{get_rss_mb():.0f}",
                 )
 
-                counters["scanned"] += 1
+                stats.scanned += 1
 
                 try:
-                    ensure_memory_below_limit(int(limits["max_memory_mb"]))
+                    with profiler.measure("memory_guard"):
+                        ensure_memory_below_limit(int(limits["max_memory_mb"]))
 
-                    size = file_size(file_path)
-                    counters["bytes"] += size
+                    with profiler.measure("file_size"):
+                        size = file_size(file_path)
+                        too_large = should_skip_by_size(
+                            file_path,
+                            int(limits["max_file_bytes"]),
+                        )
 
-                    if should_skip_by_size(file_path, int(limits["max_file_bytes"])):
-                        counters["too_large"] += 1
-                        progress.advance(task)
+                    stats.bytes += size
+
+                    if too_large:
+                        stats.too_large += 1
                         continue
 
                     if dry_run:
                         continue
 
-                    text = read_text(file_path)
-                    file_hash = sha256_text(text)
+                    with profiler.measure("read"):
+                        text = read_text(file_path)
 
-                    if not force and manifest.is_file_unchanged(
-                        source_name=source["name"],
-                        path=file_path,
-                        file_hash=file_hash,
-                    ):
-                        counters["skipped"] += 1
+                    with profiler.measure("hash"):
+                        file_hash = sha256_text(text)
+
+                    with profiler.measure("manifest_check"):
+                        unchanged = (
+                            not force
+                            and manifest.is_file_unchanged(
+                                source_name=source["name"],
+                                path=file_path,
+                                file_hash=file_hash,
+                            )
+                        )
+
+                    if unchanged:
+                        stats.skipped += 1
                         continue
 
-                    language = detect_language(file_path)
-                    chunks = make_chunks(
-                        text=text,
-                        file_path=file_path,
-                        language=language,
-                        chunking_cfg=chunking_cfg,
-                    )
+                    with profiler.measure("detect_language"):
+                        language = detect_language(file_path)
+
+                    with profiler.measure("chunk"):
+                        chunks = make_chunks(
+                            text=text,
+                            file_path=file_path,
+                            language=language,
+                            chunking_cfg=chunking_cfg,
+                        )
 
                     if len(chunks) > int(limits["max_chunks_per_file"]):
                         chunks = chunks[: int(limits["max_chunks_per_file"])]
 
-                    old_chunk_ids = manifest.get_chunk_ids(
-                        source_name=source["name"],
-                        path=file_path,
-                    )
+                    with profiler.measure("manifest_read"):
+                        old_chunk_ids = manifest.get_chunk_ids(
+                            source_name=source["name"],
+                            path=file_path,
+                        )
+
                     new_chunk_ids = [chunk.chunk_id for chunk in chunks]
 
                     if not chunks:
-                        manifest.replace_file(
-                            source_name=source["name"],
-                            path=file_path,
-                            file_hash=file_hash,
-                            chunk_ids=[],
-                            chunk_fts_records=[],
-                        )
+                        with profiler.measure("manifest_replace"):
+                            manifest.replace_file(
+                                source_name=source["name"],
+                                path=file_path,
+                                file_hash=file_hash,
+                                chunk_ids=[],
+                                chunk_fts_records=[],
+                            )
 
                         if old_chunk_ids:
-                            store.delete_points(old_chunk_ids)
+                            with profiler.measure("delete_old_points"):
+                                store.delete_points(old_chunk_ids)
 
-                        counters["empty"] += 1
+                        stats.empty += 1
                         continue
 
                     index_chunks_in_batches(
@@ -167,40 +186,47 @@ def index_source(
                         embed_batch_size=int(limits["embed_batch_size"]),
                         upsert_batch_size=int(limits["upsert_batch_size"]),
                         max_memory_mb=int(limits["max_memory_mb"]),
+                        profiler=profiler,
                     )
 
-                    chunk_fts_records = build_chunk_fts_records(
-                        source=source,
-                        file_path=file_path,
-                        chunks=chunks,
-                        language=language,
-                    )
+                    with profiler.measure("fts_records"):
+                        chunk_fts_records = build_chunk_fts_records(
+                            source=source,
+                            file_path=file_path,
+                            chunks=chunks,
+                            language=language,
+                        )
 
-                    manifest.replace_file(
-                        source_name=source["name"],
-                        path=file_path,
-                        file_hash=file_hash,
-                        chunk_ids=new_chunk_ids,
-                        chunk_fts_records=chunk_fts_records,
-                    )
+                    with profiler.measure("manifest_replace"):
+                        manifest.replace_file(
+                            source_name=source["name"],
+                            path=file_path,
+                            file_hash=file_hash,
+                            chunk_ids=new_chunk_ids,
+                            chunk_fts_records=chunk_fts_records,
+                        )
 
                     new_chunk_id_set = set(new_chunk_ids)
                     old_chunk_ids_to_delete = [
-                        chunk_id for chunk_id in old_chunk_ids if chunk_id not in new_chunk_id_set
+                        chunk_id
+                        for chunk_id in old_chunk_ids
+                        if chunk_id not in new_chunk_id_set
                     ]
 
                     if old_chunk_ids_to_delete:
-                        store.delete_points(old_chunk_ids_to_delete)
+                        with profiler.measure("delete_old_points"):
+                            store.delete_points(old_chunk_ids_to_delete)
 
-                    counters["indexed"] += 1
-                    counters["chunks"] += len(chunks)
+                    stats.record_indexed_file(len(chunks))
 
                     del text
                     del chunks
-                    gc.collect()
+
+                    with profiler.measure("gc"):
+                        gc.collect()
 
                 except Exception:
-                    counters["failed"] += 1
+                    stats.failed += 1
 
                     if limits.get("stop_on_error", False):
                         raise
@@ -209,7 +235,7 @@ def index_source(
                     progress.update(task, rss=f"{get_rss_mb():.0f}")
                     progress.advance(task)
 
-    return format_index_result(counters)
+    return format_index_result(stats, profiler)
 
 def build_chunk_fts_records(
     source: dict[str, Any],
@@ -279,53 +305,64 @@ def index_chunks_in_batches(
     embed_batch_size: int,
     upsert_batch_size: int,
     max_memory_mb: int,
+    profiler: IndexingProfiler,
 ) -> None:
     for chunk_batch in batched(chunks, embed_batch_size):
-        ensure_memory_below_limit(max_memory_mb)
-        texts = [chunk.text_for_embedding for chunk in chunk_batch]
-        vectors = embedder.embed(texts)
+        with profiler.measure("memory_guard"):
+            ensure_memory_below_limit(max_memory_mb)
 
-        ensure_memory_below_limit(max_memory_mb)
+        texts = [chunk.text_for_embedding for chunk in chunk_batch]
+
+        with profiler.measure("dense_embed"):
+            vectors = embedder.embed(texts)
+
+        with profiler.measure("memory_guard"):
+            ensure_memory_below_limit(max_memory_mb)
+
         points = []
 
-        for chunk, vector in zip(chunk_batch, vectors):
-            payload = build_payload(
-                source=source,
-                file_path=file_path,
-                chunk=chunk,
-                language=language,
-            )
+        with profiler.measure("build_payload"):
+            for chunk, vector in zip(chunk_batch, vectors):
+                payload = build_payload(
+                    source=source,
+                    file_path=file_path,
+                    chunk=chunk,
+                    language=language,
+                )
 
-            points.append(
-                {
-                    "id": chunk.chunk_id,
-                    "vector": vector,
-                    "sparse_text": chunk.text_for_embedding,
-                    "payload": payload,
-                }
-            )
+                points.append(
+                    {
+                        "id": chunk.chunk_id,
+                        "vector": vector,
+                        "sparse_text": chunk.text_for_embedding,
+                        "payload": payload,
+                    }
+                )
 
         for point_batch in batched(points, upsert_batch_size):
-            store.upsert(point_batch)
+            with profiler.measure("qdrant_upsert"):
+                store.upsert(point_batch)
 
         del texts
         del vectors
         del points
-        gc.collect()
+
+        with profiler.measure("gc"):
+            gc.collect()
 
 
-def format_index_result(counters: dict[str, int]) -> str:
-    mb = counters["bytes"] / 1024 / 1024
-
-    return (
-        f"Scanned files={counters['scanned']}, "
-        f"indexed={counters['indexed']}, "
-        f"chunks={counters['chunks']}, "
-        f"skipped={counters['skipped']}, "
-        f"empty={counters['empty']}, "
-        f"too_large={counters['too_large']}, "
-        f"failed={counters['failed']}, "
-        f"scanned_mb={mb:.1f}"
+def format_index_result(
+    stats: IndexingStats,
+    profiler: IndexingProfiler,
+) -> str:
+    return "\n".join(
+        [
+            stats.format_legacy_summary(),
+            "",
+            stats.format_details(),
+            "",
+            profiler.format_timings(),
+        ]
     )
 
 def search_query(
