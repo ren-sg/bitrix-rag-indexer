@@ -2,6 +2,17 @@ from typing import Any
 
 from rich.panel import Panel
 
+DEBUG_PAYLOAD_FIELDS = [
+    "php_namespace",
+    "php_nearest_type_kind",
+    "php_nearest_type_name",
+    "php_nearest_function_kind",
+    "php_nearest_function_name",
+    "php_symbol_names",
+    "php_symbol_kinds",
+    "module",
+]
+
 
 def format_search_result(item: dict[str, Any], debug: bool = False) -> Panel:
     payload = item.get("payload") or {}
@@ -63,6 +74,13 @@ def format_debug_info(item: dict[str, Any]) -> str:
             f"rank={_format_optional(lexical_rank)}, "
             f"score={_format_number(lexical_score)}"
         )
+
+    payload = item.get("payload") or {}
+    for field_name in DEBUG_PAYLOAD_FIELDS:
+        value = payload.get(field_name)
+        if value in (None, "", [], {}):
+            continue
+        lines.append(f"{field_name}: {value}")
 
     return "\n".join(lines)
 
