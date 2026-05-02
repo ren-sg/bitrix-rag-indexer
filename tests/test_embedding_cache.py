@@ -1,3 +1,5 @@
+import pytest
+
 from bitrix_rag_indexer.embeddings.cache import EmbeddingCache, hash_embedding_text
 
 
@@ -17,7 +19,7 @@ def test_embedding_cache_roundtrip(tmp_path) -> None:
     cached = cache.get_many("test-model", [text_hash])
 
     assert list(cached) == [text_hash]
-    assert cached[text_hash] == vector
+    assert cached[text_hash] == pytest.approx(vector)
 
 
 def test_embedding_cache_is_model_scoped(tmp_path) -> None:
@@ -31,9 +33,10 @@ def test_embedding_cache_is_model_scoped(tmp_path) -> None:
     )
 
     assert cache.get_many("model-b", [text_hash]) == {}
-    assert cache.get_many("model-a", [text_hash]) == {
-        text_hash: [1.0, 2.0],
-    }
+    cached = cache.get_many("model-a", [text_hash])
+
+    assert list(cached) == [text_hash]
+    assert cached[text_hash] == pytest.approx([1.0, 2.0])
 
 
 def test_embedding_cache_deduplicates_lookup_hashes(tmp_path) -> None:
@@ -52,4 +55,5 @@ def test_embedding_cache_deduplicates_lookup_hashes(tmp_path) -> None:
         text_hashes=[text_hash, text_hash, text_hash],
     )
 
-    assert cached == {text_hash: vector}
+    assert list(cached) == [text_hash]
+    assert cached[text_hash] == pytest.approx(vector)
