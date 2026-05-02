@@ -55,3 +55,32 @@ function helper_function(): void
 
 def test_parse_php_symbols_ignores_empty_text() -> None:
     assert parse_php_symbols("") == []
+
+
+def test_parse_php_symbols_extracts_method_modifiers() -> None:
+    text = """<?php
+
+abstract class GridHandler
+{
+    abstract public function getRows(): array;
+
+    final protected static function mapRow(array $row): array
+    {
+        return $row;
+    }
+}
+"""
+
+    symbols = parse_php_symbols(text)
+
+    get_rows = next(item for item in symbols if item.name == "getRows")
+    map_row = next(item for item in symbols if item.name == "mapRow")
+
+    assert get_rows.visibility == "public"
+    assert get_rows.is_abstract is True
+    assert get_rows.has_body is False
+
+    assert map_row.visibility == "protected"
+    assert map_row.is_static is True
+    assert map_row.is_final is True
+    assert map_row.has_body is True

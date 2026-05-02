@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
+import re
 
 import tree_sitter_php as tsphp
 from tree_sitter import Language, Parser
@@ -18,6 +19,11 @@ class PhpAstSymbol:
     end_byte: int
     parent_kind: str | None = None
     parent_name: str | None = None
+    visibility: str | None = None
+    is_static: bool = False
+    is_abstract: bool = False
+    is_final: bool = False
+    has_body: bool = True
 
 
 NODE_KIND_MAP = {
@@ -91,6 +97,7 @@ def parse_php_symbols(text: str) -> list[PhpAstSymbol]:
             name = extract_node_name(source_bytes, node)
 
             if name:
+                modifiers = extract_symbol_modifiers(source_bytes, node)
                 symbols.append(
                     PhpAstSymbol(
                         kind=mapped_kind,
@@ -101,6 +108,11 @@ def parse_php_symbols(text: str) -> list[PhpAstSymbol]:
                         end_byte=node.end_byte,
                         parent_kind=parent_kind if mapped_kind in FUNCTION_KINDS else None,
                         parent_name=parent_name if mapped_kind in FUNCTION_KINDS else None,
+                        visibility=modifiers["visibility"],
+                        is_static=modifiers["is_static"],
+                        is_abstract=modifiers["is_abstract"],
+                        is_final=modifiers["is_final"],
+                        has_body=modifiers["has_body"],
                     )
                 )
 
@@ -159,3 +171,28 @@ def point_row(point: Any) -> int:
         return int(point.row)
 
     return int(point[0])
+
+
+def extract_symbol_modifiers(source_bytes: bytes, node: Any) -> dict:
+    node_source = node_text(source_bytes, node)
+
+    header = node_source.split("{", 1)[0]
+    header = header.split(";", 1)[0]
+
+    visibility = None
+    for candidate in ("public", "protected", "private"):
+        if contains_php_keyword(header, candidate):
+            visibility = candidate
+            break
+
+    return {
+        "visibility": visibility,
+        "is_static": contains_php_keyword(header, "static"),
+        "is_abstract": contains_php_keyword(header, "abstract"),
+        "is_final": contains_php_keyword(header, "final"),
+        "has_body": "{" in node_source,
+    }
+
+
+def contains_php_keyword(text: str, keyword: str) -> bool:
+    return bool(re.search(rf"\b{re.escape(keyword)}\b", text))

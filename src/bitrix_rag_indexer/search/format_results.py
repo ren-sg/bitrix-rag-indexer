@@ -10,6 +10,11 @@ DEBUG_PAYLOAD_FIELDS = [
     "php_nearest_function_name",
     "php_symbol_names",
     "php_symbol_kinds",
+    "php_symbol_visibility",
+    "php_symbol_is_static",
+    "php_symbol_is_abstract",
+    "php_symbol_is_final",
+    "php_symbol_has_body",
     "module",
 ]
 

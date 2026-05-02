@@ -549,8 +549,18 @@ def build_php_symbol_metadata(
                 "line": symbol.start_line,
                 "parent_kind": symbol.parent_kind,
                 "parent_name": symbol.parent_name,
+                "visibility": symbol.visibility,
+                "is_static": symbol.is_static,
+                "is_abstract": symbol.is_abstract,
+                "is_final": symbol.is_final,
+                "has_body": symbol.has_body,
             }
         ],
+        "php_symbol_visibility": symbol.visibility,
+        "php_symbol_is_static": symbol.is_static,
+        "php_symbol_is_abstract": symbol.is_abstract,
+        "php_symbol_is_final": symbol.is_final,
+        "php_symbol_has_body": symbol.has_body,
     }
 
 
