@@ -1,73 +1,57 @@
-#### Проверка
+#### Команды, которые актуальны
+
+**Проверка:**
+
+```bash
+uv run pytest -q
+```
+
+**Индексация:**
 
 ```bash
 uv sync
 docker compose up -d qdrant
 
 uv run bitrix-rag index --profile mvp --source manual
-uv run bitrix-rag stats
-uv run bitrix-rag search "где описаны современные компоненты битрикс"
-uv run bitrix-rag search "зачем нужен каталог local"
-uv run bitrix-rag search "что делает модуль im"
-```
-
-**Ожидаемый результат:**
-
-```
-Indexed files=3, chunks=3
-```
-
-
-#### Запуск
-**Проверка файлов для индексации в `local`**
-```bash
 uv run bitrix-rag index --profile mvp --source project_local --dry-run
-```
-
-**Индексация каталога `local` в битрикс окружении**
-```bash
 uv run bitrix-rag index --profile mvp --source project_local
-```
-
-#### Очистка и переиндексация
-
-```bash
-## Re-index
 uv run bitrix-rag index --profile mvp --source project_local --force
-
-## Clear
-curl -X DELETE http://localhost:6333/collections/bitrix_code_mvp
-rm -rf .indexer/state/index.sqlite
+uv run bitrix-rag index --profile mvp --source project_local --max-files 30 --force
 ```
 
-#### Очистка неиспользуемых данных в manifest
+**Prune:**
+
 ```bash
 uv run bitrix-rag prune --profile mvp --source project_local --dry-run
 uv run bitrix-rag prune --profile mvp --source project_local
 ```
 
-#### Проверка eval
+**Search:**
 
 ```bash
-uv run bitrix-rag eval --profile mvp
+uv run bitrix-rag search "BX.ajax" --mode dense --source project_local --limit 10
+uv run bitrix-rag search "BX.ajax" --mode qdrant-sparse --source project_local --limit 10
+uv run bitrix-rag search "BX.ajax" --mode qdrant-hybrid --source project_local --limit 10
+
+uv run bitrix-rag search "getRows" \
+  --source project_local \
+  --mode qdrant-hybrid \
+  --limit 5 \
+  --debug
 ```
 
-```bash
-expected:
-  path_contains_any: []
-  path_contains_all: []
-  path_not_contains: []
-  text_contains_any: []
-  text_contains_all: []
-  text_not_contains: []
-```
-#### Тесты
+**Eval:**
 
 ```bash
-uv run pytest
+uv run bitrix-rag eval --profile mvp --mode dense
+uv run bitrix-rag eval --profile mvp --mode qdrant-sparse
+uv run bitrix-rag eval --profile mvp --mode qdrant-hybrid
 ```
 
-#### Debug
+**Короткий summary:**
+
 ```bash
-uv run bitrix-rag search "BX.ajax" --mode hybrid --source project_local --limit 5 --debug
+uv run bitrix-rag eval --profile mvp --mode dense | grep 'Summary'
+uv run bitrix-rag eval --profile mvp --mode qdrant-sparse | grep 'Summary'
+uv run bitrix-rag eval --profile mvp --mode qdrant-hybrid | grep 'Summary'
 ```
