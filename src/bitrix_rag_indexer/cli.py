@@ -27,6 +27,8 @@ def print_eval_breakdown(
     table.add_column("total", justify="right")
     table.add_column("hit@5", justify="right")
     table.add_column("hit@10", justify="right")
+    table.add_column("path@5", justify="right")
+    table.add_column("path@10", justify="right")
 
     for label, item in items.items():
         total = item["total"]
@@ -35,6 +37,8 @@ def print_eval_breakdown(
             str(total),
             f"{item['hit_at_5']}/{total} ({item['hit_at_5_rate']:.0%})",
             f"{item['hit_at_10']}/{total} ({item['hit_at_10_rate']:.0%})",
+            f"{item['path_hit_at_5']}/{total} ({item['path_hit_at_5_rate']:.0%})",
+            f"{item['path_hit_at_10']}/{total} ({item['path_hit_at_10_rate']:.0%})",
         )
 
     console.print(table)
@@ -170,6 +174,7 @@ def eval_command(
     table.add_column("id")
     table.add_column("group")
     table.add_column("rank", justify="right")
+    table.add_column("path rank", justify="right")
     table.add_column("hit@5", justify="center")
     table.add_column("hit@10", justify="center")
     table.add_column("matched path")
@@ -177,12 +182,14 @@ def eval_command(
 
     for case in result["cases"]:
         rank = case["first_rank"]
+        path_rank = case.get("path_rank")
         rank_text = str(rank) if rank is not None else "-"
-
+        path_rank_text = str(path_rank) if path_rank is not None else "-"
         table.add_row(
             case["id"],
             case["group"],
             rank_text,
+            path_rank_text,
             "yes" if case["hit_at_5"] else "no",
             "yes" if case["hit_at_10"] else "no",
             case["matched_path"] or "-",
@@ -200,6 +207,15 @@ def eval_command(
         f"({result['hit_at_10_rate']:.0%})"
     )
 
+    console.print(
+        "[bold]Path-only Summary:[/bold] "
+        f"total={result['total']}, "
+        f"path_hit@5={result['path_hit_at_5']}/{result['total']} "
+        f"({result['path_hit_at_5_rate']:.0%}), "
+        f"path_hit@10={result['path_hit_at_10']}/{result['total']} "
+        f"({result['path_hit_at_10_rate']:.0%})"
+    )
+
     print_eval_breakdown("By group", "group", result.get("by_group") or {})
     print_eval_breakdown("By id prefix", "prefix", result.get("by_id_prefix") or {})
     print_eval_breakdown("By filter lang", "lang", result.get("by_filter_lang") or {})
@@ -210,6 +226,7 @@ def eval_command(
         failed_table.add_column("id")
         failed_table.add_column("group")
         failed_table.add_column("query")
+        failed_table.add_column("path rank", justify="right")
         failed_table.add_column("expected")
         failed_table.add_column("top paths")
 
@@ -218,6 +235,7 @@ def eval_command(
                 case["id"],
                 case["group"],
                 case["query"],
+                str(case.get("path_rank") or "-"),
                 format_expected_for_console(case.get("expected") or {}),
                 "\n".join(case["top_paths"]),
             )

@@ -2,6 +2,26 @@ from dataclasses import dataclass
 
 from qdrant_client import models
 
+LANGUAGE_ALIASES = {
+    "js": "javascript",
+    "jsx": "javascript",
+    "ts": "typescript",
+    "tsx": "typescript",
+    "md": "markdown",
+    "yml": "yaml",
+}
+
+
+def normalize_search_lang(lang: str | None) -> str | None:
+    if lang is None:
+        return None
+
+    normalized = lang.strip().casefold()
+    if not normalized:
+        return None
+
+    return LANGUAGE_ALIASES.get(normalized, normalized)
+
 
 @dataclass(frozen=True)
 class SearchFilters:
@@ -9,6 +29,9 @@ class SearchFilters:
     lang: str | None = None
     path: str | None = None
     source_type: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "lang", normalize_search_lang(self.lang))
 
     def is_empty(self) -> bool:
         return not any(

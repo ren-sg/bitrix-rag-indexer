@@ -3,7 +3,7 @@ from typing import Any
 
 from bitrix_rag_indexer.app import search_query
 from bitrix_rag_indexer.config.loader import load_yaml
-from bitrix_rag_indexer.search.filters import SearchFilters
+from bitrix_rag_indexer.search.filters import SearchFilters, normalize_search_lang
 
 
 def run_eval(
@@ -25,9 +25,10 @@ def run_eval(
         return empty_eval_result(eval_path)
 
     rows: list[dict[str, Any]] = []
-
     hit_at_5 = 0
     hit_at_10 = 0
+    path_hit_at_5 = 0
+    path_hit_at_10 = 0
 
     for case in cases:
         case_id = str(case["id"])
@@ -58,18 +59,29 @@ def run_eval(
             results=results,
             expected=expected,
         )
+        first_path_match = find_first_expected_path_match(
+            results=results,
+            expected=expected,
+        )
 
         first_rank = first_match["rank"] if first_match else None
+        path_rank = first_path_match["rank"] if first_path_match else None
         matched_path = first_match["path"] if first_match else None
+        path_matched_path = first_path_match["path"] if first_path_match else None
 
         case_hit_at_5 = first_rank is not None and first_rank <= 5
         case_hit_at_10 = first_rank is not None and first_rank <= 10
+        case_path_hit_at_5 = path_rank is not None and path_rank <= 5
+        case_path_hit_at_10 = path_rank is not None and path_rank <= 10
 
         if case_hit_at_5:
             hit_at_5 += 1
-
         if case_hit_at_10:
             hit_at_10 += 1
+        if case_path_hit_at_5:
+            path_hit_at_5 += 1
+        if case_path_hit_at_10:
+            path_hit_at_10 += 1
 
         rows.append(
             {
@@ -80,9 +92,13 @@ def run_eval(
                 "filter_lang": normalize_eval_filter_lang(filter_data),
                 "expected": expected,
                 "first_rank": first_rank,
+                "path_rank": path_rank,
                 "matched_path": matched_path,
+                "path_matched_path": path_matched_path,
                 "hit_at_5": case_hit_at_5,
                 "hit_at_10": case_hit_at_10,
+                "path_hit_at_5": case_path_hit_at_5,
+                "path_hit_at_10": case_path_hit_at_10,
                 "top_paths": collect_top_paths(results, limit=min(limit, 5)),
             }
         )
@@ -100,6 +116,10 @@ def run_eval(
         "hit_at_10": hit_at_10,
         "hit_at_5_rate": hit_at_5 / total if total else 0.0,
         "hit_at_10_rate": hit_at_10 / total if total else 0.0,
+        "path_hit_at_5": path_hit_at_5,
+        "path_hit_at_10": path_hit_at_10,
+        "path_hit_at_5_rate": path_hit_at_5 / total if total else 0.0,
+        "path_hit_at_10_rate": path_hit_at_10 / total if total else 0.0,
         "cases": rows,
         "by_group": by_group,
         "by_id_prefix": by_id_prefix,
@@ -116,6 +136,10 @@ def empty_eval_result(eval_path: Path) -> dict[str, Any]:
         "hit_at_10": 0,
         "hit_at_5_rate": 0.0,
         "hit_at_10_rate": 0.0,
+        "path_hit_at_5": 0,
+        "path_hit_at_10": 0,
+        "path_hit_at_5_rate": 0.0,
+        "path_hit_at_10_rate": 0.0,
         "cases": [],
         "by_group": {},
         "by_id_prefix": {},
@@ -171,6 +195,45 @@ def find_first_expected_match(
             }
 
     return None
+
+def find_first_expected_path_match(
+    results: list[dict[str, Any]],
+    expected: dict[str, list[str]],
+) -> dict[str, Any] | None:
+    path_expected = {
+        "path_contains_any": expected["path_contains_any"],
+        "path_contains_all": expected["path_contains_all"],
+        "path_not_contains": expected["path_not_contains"],
+    }
+
+    if not any(path_expected.values()):
+        return None
+
+    for index, item in enumerate(results, start=1):
+        if result_matches_expected_path(item=item, expected=path_expected):
+            return {
+                "rank": index,
+                "path": get_result_path(item),
+                "score": item.get("score"),
+            }
+
+    return None
+
+
+def result_matches_expected_path(
+    item: dict[str, Any],
+    expected: dict[str, list[str]],
+) -> bool:
+    path = normalize_text(get_result_path(item))
+
+    if not contains_any(path, expected["path_contains_any"]):
+        return False
+    if not contains_all(path, expected["path_contains_all"]):
+        return False
+    if contains_any(path, expected["path_not_contains"], default=False):
+        return False
+
+    return True
 
 
 def expected_is_empty(expected: dict[str, list[str]]) -> bool:
@@ -282,11 +345,11 @@ def infer_id_prefix(case_id: str) -> str:
 
 
 def normalize_eval_filter_lang(filter_data: dict[str, Any]) -> str:
-    lang = filter_data.get("lang") or filter_data.get("language")
-    if not lang:
-        return "unfiltered"
+    lang = normalize_search_lang(
+        filter_data.get("lang") or filter_data.get("language")
+    )
 
-    return str(lang)
+    return lang or "unfiltered"
 
 
 def build_summary(
@@ -302,8 +365,12 @@ def build_summary(
                 "total": 0,
                 "hit_at_5": 0,
                 "hit_at_10": 0,
+                "path_hit_at_5": 0,
+                "path_hit_at_10": 0,
                 "hit_at_5_rate": 0.0,
                 "hit_at_10_rate": 0.0,
+                "path_hit_at_5_rate": 0.0,
+                "path_hit_at_10_rate": 0.0,
             }
 
         item = summary[bucket]
@@ -312,10 +379,16 @@ def build_summary(
             item["hit_at_5"] += 1
         if row["hit_at_10"]:
             item["hit_at_10"] += 1
+        if row.get("path_hit_at_5"):
+            item["path_hit_at_5"] += 1
+        if row.get("path_hit_at_10"):
+            item["path_hit_at_10"] += 1
 
     for item in summary.values():
         total = item["total"]
         item["hit_at_5_rate"] = item["hit_at_5"] / total if total else 0.0
         item["hit_at_10_rate"] = item["hit_at_10"] / total if total else 0.0
+        item["path_hit_at_5_rate"] = item["path_hit_at_5"] / total if total else 0.0
+        item["path_hit_at_10_rate"] = item["path_hit_at_10"] / total if total else 0.0
 
     return dict(sorted(summary.items()))
