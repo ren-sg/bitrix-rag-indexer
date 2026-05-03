@@ -339,7 +339,7 @@ def flush_pending_index_jobs(
         ]
 
         with profiler.measure("dense_embed"):
-            vectors = embedder.embed(texts)
+            vectors = embedder.embed_documents(texts)
 
         with profiler.measure("memory_guard"):
             ensure_memory_below_limit(max_memory_mb)
@@ -427,7 +427,7 @@ def index_chunks_in_batches(
         texts = [chunk.text_for_embedding for chunk in chunk_batch]
 
         with profiler.measure("dense_embed"):
-            vectors = embedder.embed(texts)
+            vectors = embedder.embed_documents(texts)
 
         with profiler.measure("memory_guard"):
             ensure_memory_below_limit(max_memory_mb)
@@ -520,7 +520,7 @@ def search_query(
         )
 
     embedder = DenseEmbedder(embeddings_cfg["dense"])
-    query_vector = embedder.embed([query])[0]
+    query_vector = embedder.embed_query(query)
 
     if mode == "qdrant-hybrid":
         return store.search_qdrant_hybrid(

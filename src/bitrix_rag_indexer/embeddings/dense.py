@@ -15,6 +15,8 @@ class DenseEmbedder:
         self.cache_path = Path(
             config.get("cache_path", ".indexer/cache/embeddings.sqlite")
         )
+        self.query_prefix = str(config.get("query_prefix", ""))
+        self.document_prefix = str(config.get("document_prefix", ""))
 
         self._model = TextEmbedding(model_name=self.model_name)
         self._cache = (
@@ -22,15 +24,19 @@ class DenseEmbedder:
             if self.cache_enabled
             else None
         )
-
         self.cache_hits = 0
         self.cache_misses = 0
-
         self.vector_size = self._detect_vector_size()
 
     def _detect_vector_size(self) -> int:
         vector = next(self._model.embed(["test"]))
         return len(vector.tolist())
+
+    def embed_query(self, text: str) -> list[float]:
+        return self.embed([self.query_prefix + text])[0]
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return self.embed([self.document_prefix + text for text in texts])
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
@@ -65,7 +71,6 @@ class DenseEmbedder:
         if missing_texts:
             new_vectors = self._embed_uncached(missing_texts)
             new_vectors_by_hash = dict(zip(missing_hashes, new_vectors))
-
             self._cache.put_many(
                 model_name=self.model_name,
                 items=list(new_vectors_by_hash.items()),
