@@ -52,7 +52,15 @@ class ElementRepository
 
     assert method_chunks[0].metadata["php_nearest_type_name"] == "ElementRepository"
     assert "Find element by id." in method_chunks[0].text
-    assert "Symbol: method findById" in method_chunks[0].text_for_embedding
+    # assert "Symbol: method findById" in method_chunks[0].text_for_embedding
+    assert (
+        "Symbol: public method ElementRepository::findById"
+        in method_chunks[0].text_for_embedding
+    )
+    assert (
+        "Symbol FQN: App\\Iblock\\ElementRepository::findById"
+        in method_chunks[0].text_for_embedding
+    )
 
 
 def test_php_tree_sitter_chunker_falls_back_for_procedural_file() -> None:

@@ -39,6 +39,14 @@ class PhpDocInfo:
     tags: dict[str, list[str]]
 
 
+@dataclass(frozen=True)
+class PhpPrefixConfig:
+    include_uses: bool = True
+    include_component_context: bool = True
+    include_symbol_fqn: bool = True
+    include_symbol_modifiers: bool = True
+
+
 NAMESPACE_RE = re.compile(
     r"^\s*namespace\s+([^;{]+)\s*[;{]",
 )
@@ -112,6 +120,7 @@ def chunk_php_line_based(
     overlap_chars = int(config.get("overlap_chars", 300))
     max_uses = int(config.get("max_uses_in_prefix", 24))
     phpdoc_config = build_phpdoc_config(config.get("phpdoc"))
+    prefix_config = build_php_prefix_config(config.get("context"))
 
     if max_chars <= 0:
         raise ValueError("max_chars must be greater than 0")
@@ -148,6 +157,7 @@ def chunk_php_line_based(
             end_line=end_line,
             context=context,
             max_uses=max_uses,
+            prefix_config=prefix_config,
         )
 
         nearest_type = find_nearest_symbol_before(
@@ -228,6 +238,7 @@ def chunk_php_tree_sitter(
     overlap_chars = int(config.get("overlap_chars", 300))
     max_uses = int(config.get("max_uses_in_prefix", 24))
     phpdoc_config = build_phpdoc_config(config.get("phpdoc"))
+    prefix_config = build_php_prefix_config(config.get("context"))
 
     if max_chars <= 0:
         raise ValueError("max_chars must be greater than 0")
@@ -346,6 +357,7 @@ def chunk_php_tree_sitter(
                 context=context,
                 symbol=symbol,
                 max_uses=max_uses,
+                prefix_config=prefix_config,
             )
             metadata = build_php_symbol_metadata(
                 context=context,
@@ -360,6 +372,7 @@ def chunk_php_tree_sitter(
                 end_line=end_line,
                 context=context,
                 max_uses=max_uses,
+                prefix_config=prefix_config,
             )
             metadata = build_php_residual_metadata(
                 context=context,
@@ -453,6 +466,7 @@ def build_php_prefix(
     end_line: int,
     context: PhpContext,
     max_uses: int,
+    prefix_config: PhpPrefixConfig,
 ) -> str:
     lines: list[str] = [
         f"Path: {path.as_posix()}",
@@ -460,42 +474,40 @@ def build_php_prefix(
         f"Lines: {start_line}-{end_line}",
     ]
 
+    if prefix_config.include_component_context:
+        lines.extend(build_bitrix_component_context_lines(path))
+
     if context.namespace:
         lines.append(f"Namespace: {context.namespace}")
 
-    if context.uses:
-        selected_uses = context.uses[:max_uses]
-        lines.append("Uses:")
-        lines.extend(f"- {item}" for item in selected_uses)
+    append_php_uses_lines(
+        lines=lines,
+        uses=context.uses,
+        max_uses=max_uses,
+        prefix_config=prefix_config,
+    )
 
     nearest_class = find_nearest_symbol_before(
         symbols=context.symbols,
         kinds={"class", "interface", "trait", "enum"},
         line=start_line,
     )
-
     if nearest_class:
-        lines.append(
-            f"Nearest type: {nearest_class.kind} {nearest_class.name}"
-        )
+        lines.append(f"Nearest type: {nearest_class.kind} {nearest_class.name}")
 
     nearest_function = find_nearest_symbol_before(
         symbols=context.symbols,
         kinds={"function", "method"},
         line=start_line,
     )
-
     if nearest_function:
         lines.append(
             f"Nearest function: {nearest_function.kind} {nearest_function.name}"
         )
 
     symbols_in_chunk = [
-        symbol
-        for symbol in context.symbols
-        if start_line <= symbol.line <= end_line
+        symbol for symbol in context.symbols if start_line <= symbol.line <= end_line
     ]
-
     if symbols_in_chunk:
         lines.append("Symbols in chunk:")
         lines.extend(
@@ -544,6 +556,7 @@ def build_php_symbol_prefix(
     context: PhpContext,
     symbol: PhpAstSymbol,
     max_uses: int,
+    prefix_config: PhpPrefixConfig,
 ) -> str:
     lines: list[str] = [
         f"Path: {path.as_posix()}",
@@ -551,18 +564,36 @@ def build_php_symbol_prefix(
         f"Lines: {start_line}-{end_line}",
     ]
 
+    if prefix_config.include_component_context:
+        lines.extend(build_bitrix_component_context_lines(path))
+
     if context.namespace:
         lines.append(f"Namespace: {context.namespace}")
 
-    if context.uses:
-        selected_uses = context.uses[:max_uses]
-        lines.append("Uses:")
-        lines.extend(f"- {item}" for item in selected_uses)
+    append_php_uses_lines(
+        lines=lines,
+        uses=context.uses,
+        max_uses=max_uses,
+        prefix_config=prefix_config,
+    )
 
     if symbol.parent_kind and symbol.parent_name:
         lines.append(f"Parent type: {symbol.parent_kind} {symbol.parent_name}")
 
-    lines.append(f"Symbol: {symbol.kind} {symbol.name}")
+    lines.append(
+        build_php_symbol_label(
+            symbol=symbol,
+            prefix_config=prefix_config,
+        )
+    )
+
+    if prefix_config.include_symbol_fqn:
+        symbol_fqn = build_php_symbol_fqn(
+            namespace=context.namespace,
+            symbol=symbol,
+        )
+        if symbol_fqn:
+            lines.append(f"Symbol FQN: {symbol_fqn}")
 
     return "\n".join(lines)
 
@@ -927,3 +958,141 @@ def clean_phpdoc_line(line: str) -> str:
         stripped = stripped[1:].strip()
 
     return stripped
+
+
+def build_php_prefix_config(raw_config: Any) -> PhpPrefixConfig:
+    if not isinstance(raw_config, dict):
+        return PhpPrefixConfig()
+
+    return PhpPrefixConfig(
+        include_uses=bool(raw_config.get("include_uses", True)),
+        include_component_context=bool(
+            raw_config.get("include_component_context", True)
+        ),
+        include_symbol_fqn=bool(raw_config.get("include_symbol_fqn", True)),
+        include_symbol_modifiers=bool(
+            raw_config.get("include_symbol_modifiers", True)
+        ),
+    )
+
+
+def append_php_uses_lines(
+    lines: list[str],
+    uses: list[str],
+    max_uses: int,
+    prefix_config: PhpPrefixConfig,
+) -> None:
+    if not prefix_config.include_uses or not uses:
+        return
+
+    selected_uses = uses[:max_uses]
+    lines.append("Uses:")
+    lines.extend(f"- {item}" for item in selected_uses)
+
+
+def build_bitrix_component_context_lines(path: Path) -> list[str]:
+    component = detect_bitrix_component_context(path)
+    if component is None:
+        return []
+
+    lines = [
+        f"Bitrix component: {component['vendor']}:{component['name']}",
+        f"Bitrix component path: {component['component_path']}",
+    ]
+
+    site_template = component.get("site_template")
+    if site_template:
+        lines.append(f"Bitrix site template: {site_template}")
+
+    component_template = component.get("component_template")
+    if component_template:
+        lines.append(f"Bitrix component template: {component_template}")
+
+    return lines
+
+
+def detect_bitrix_component_context(path: Path) -> dict[str, str] | None:
+    parts = path.as_posix().split("/")
+
+    if len(parts) >= 3 and parts[0] == "components":
+        return {
+            "vendor": parts[1],
+            "name": parts[2],
+            "component_path": "/".join(parts[:3]),
+        }
+
+    if len(parts) >= 6 and parts[0] == "templates":
+        try:
+            components_index = parts.index("components")
+        except ValueError:
+            return None
+
+        if len(parts) <= components_index + 2:
+            return None
+
+        component_template = (
+            parts[components_index + 3]
+            if len(parts) > components_index + 3
+            else None
+        )
+
+        result = {
+            "vendor": parts[components_index + 1],
+            "name": parts[components_index + 2],
+            "component_path": "/".join(parts[: components_index + 3]),
+            "site_template": parts[1],
+        }
+
+        if component_template:
+            result["component_template"] = component_template
+
+        return result
+
+    return None
+
+
+def build_php_symbol_label(
+    symbol: PhpAstSymbol,
+    prefix_config: PhpPrefixConfig,
+) -> str:
+    symbol_name = symbol.name
+    if symbol.parent_name and symbol.kind == "method":
+        symbol_name = f"{symbol.parent_name}::{symbol.name}"
+
+    parts: list[str] = ["Symbol:"]
+
+    if prefix_config.include_symbol_modifiers:
+        if symbol.visibility:
+            parts.append(symbol.visibility)
+        if symbol.is_static:
+            parts.append("static")
+        if symbol.is_abstract:
+            parts.append("abstract")
+        if symbol.is_final:
+            parts.append("final")
+        if not symbol.has_body:
+            parts.append("declaration")
+
+    parts.extend([symbol.kind, symbol_name])
+
+    return " ".join(parts)
+
+
+def build_php_symbol_fqn(
+    namespace: str | None,
+    symbol: PhpAstSymbol,
+) -> str | None:
+    if symbol.kind == "method" and symbol.parent_name:
+        type_name = symbol.parent_name
+        if namespace:
+            type_name = f"{namespace}\\{type_name}"
+
+        return f"{type_name}::{symbol.name}"
+
+    if symbol.kind == "function":
+        if namespace:
+            return f"{namespace}\\{symbol.name}"
+
+        return symbol.name
+
+    return None
