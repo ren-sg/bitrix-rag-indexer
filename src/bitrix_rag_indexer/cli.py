@@ -1,18 +1,56 @@
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
-from bitrix_rag_indexer.app import index_source, search_query, show_stats
+from bitrix_rag_indexer.app import index_source, prune_source, search_query, show_stats
+from bitrix_rag_indexer.eval.runner import run_eval
 from bitrix_rag_indexer.search.filters import SearchFilters
 from bitrix_rag_indexer.search.format_results import format_search_result
-from bitrix_rag_indexer.eval.runner import run_eval
-from bitrix_rag_indexer.app import index_source, prune_source, search_query, show_stats
 
 app = typer.Typer(no_args_is_help=True)
 console = Console()
+
+
+def print_eval_breakdown(
+    title: str,
+    label_column: str,
+    items: dict[str, dict[str, Any]],
+) -> None:
+    if not items:
+        return
+
+    table = Table(title=title)
+    table.add_column(label_column)
+    table.add_column("total", justify="right")
+    table.add_column("hit@5", justify="right")
+    table.add_column("hit@10", justify="right")
+
+    for label, item in items.items():
+        total = item["total"]
+        table.add_row(
+            label,
+            str(total),
+            f"{item['hit_at_5']}/{total} ({item['hit_at_5_rate']:.0%})",
+            f"{item['hit_at_10']}/{total} ({item['hit_at_10_rate']:.0%})",
+        )
+
+    console.print(table)
+
+
+def format_expected_for_console(expected: dict[str, list[str]]) -> str:
+    lines: list[str] = []
+
+    for key, values in expected.items():
+        if not values:
+            continue
+
+        lines.append(f"{key}:")
+        lines.extend(f"  - {value}" for value in values)
+
+    return "\n".join(lines) if lines else "-"
 
 
 @app.command()
@@ -28,7 +66,6 @@ def index(
     ),
     config_dir: Path = typer.Option(Path("configs"), help="Config directory"),
 ) -> None:
-
     """Index configured sources."""
     result = index_source(
         profile=profile,
@@ -92,6 +129,7 @@ def stats(
     """Show collection stats."""
     console.print(show_stats(config_dir=config_dir))
 
+
 @app.command("eval")
 def eval_command(
     profile: str = typer.Option("mvp", help="Config profile name"),
@@ -121,9 +159,7 @@ def eval_command(
         mode=mode,
     )
 
-    console.print(
-        f"[bold]Eval file:[/bold] {result['eval_file']}"
-    )
+    console.print(f"[bold]Eval file:[/bold] {result['eval_file']}")
 
     if result["total"] == 0:
         console.print("[yellow]No eval queries found.[/yellow]")
@@ -164,23 +200,9 @@ def eval_command(
         f"({result['hit_at_10_rate']:.0%})"
     )
 
-    if result.get("by_group"):
-        group_table = Table(title="By group")
-        group_table.add_column("group")
-        group_table.add_column("total", justify="right")
-        group_table.add_column("hit@5", justify="right")
-        group_table.add_column("hit@10", justify="right")
-
-        for group, item in result["by_group"].items():
-            total = item["total"]
-            group_table.add_row(
-                group,
-                str(total),
-                f"{item['hit_at_5']}/{total} ({item['hit_at_5_rate']:.0%})",
-                f"{item['hit_at_10']}/{total} ({item['hit_at_10_rate']:.0%})",
-            )
-
-        console.print(group_table)
+    print_eval_breakdown("By group", "group", result.get("by_group") or {})
+    print_eval_breakdown("By id prefix", "prefix", result.get("by_id_prefix") or {})
+    print_eval_breakdown("By filter lang", "lang", result.get("by_filter_lang") or {})
 
     failed_cases = result.get("failed_cases") or []
     if failed_cases:
@@ -188,6 +210,7 @@ def eval_command(
         failed_table.add_column("id")
         failed_table.add_column("group")
         failed_table.add_column("query")
+        failed_table.add_column("expected")
         failed_table.add_column("top paths")
 
         for case in failed_cases:
@@ -195,10 +218,12 @@ def eval_command(
                 case["id"],
                 case["group"],
                 case["query"],
+                format_expected_for_console(case.get("expected") or {}),
                 "\n".join(case["top_paths"]),
             )
 
         console.print(failed_table)
+
 
 @app.command()
 def prune(

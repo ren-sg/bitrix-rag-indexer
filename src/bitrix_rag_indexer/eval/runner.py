@@ -76,6 +76,8 @@ def run_eval(
                 "id": case_id,
                 "query": query,
                 "group": group,
+                "id_prefix": infer_id_prefix(case_id),
+                "filter_lang": normalize_eval_filter_lang(filter_data),
                 "expected": expected,
                 "first_rank": first_rank,
                 "matched_path": matched_path,
@@ -86,7 +88,9 @@ def run_eval(
         )
 
     total = len(cases)
-    by_group = build_group_summary(rows)
+    by_group = build_summary(rows, key="group")
+    by_id_prefix = build_summary(rows, key="id_prefix")
+    by_filter_lang = build_summary(rows, key="filter_lang")
     failed_cases = [case for case in rows if not case["hit_at_10"]]
 
     return {
@@ -98,6 +102,8 @@ def run_eval(
         "hit_at_10_rate": hit_at_10 / total if total else 0.0,
         "cases": rows,
         "by_group": by_group,
+        "by_id_prefix": by_id_prefix,
+        "by_filter_lang": by_filter_lang,
         "failed_cases": failed_cases,
     }
 
@@ -112,6 +118,8 @@ def empty_eval_result(eval_path: Path) -> dict[str, Any]:
         "hit_at_10_rate": 0.0,
         "cases": [],
         "by_group": {},
+        "by_id_prefix": {},
+        "by_filter_lang": {},
         "failed_cases": [],
     }
 
@@ -120,24 +128,12 @@ def normalize_expected(case: dict[str, Any]) -> dict[str, list[str]]:
     expected_raw = case.get("expected") or {}
 
     expected = {
-        "path_contains_any": to_string_list(
-            expected_raw.get("path_contains_any")
-        ),
-        "path_contains_all": to_string_list(
-            expected_raw.get("path_contains_all")
-        ),
-        "path_not_contains": to_string_list(
-            expected_raw.get("path_not_contains")
-        ),
-        "text_contains_any": to_string_list(
-            expected_raw.get("text_contains_any")
-        ),
-        "text_contains_all": to_string_list(
-            expected_raw.get("text_contains_all")
-        ),
-        "text_not_contains": to_string_list(
-            expected_raw.get("text_not_contains")
-        ),
+        "path_contains_any": to_string_list(expected_raw.get("path_contains_any")),
+        "path_contains_all": to_string_list(expected_raw.get("path_contains_all")),
+        "path_not_contains": to_string_list(expected_raw.get("path_not_contains")),
+        "text_contains_any": to_string_list(expected_raw.get("text_contains_any")),
+        "text_contains_all": to_string_list(expected_raw.get("text_contains_all")),
+        "text_not_contains": to_string_list(expected_raw.get("text_not_contains")),
     }
 
     # Backward compatibility with the first MVP eval format.
@@ -217,10 +213,7 @@ def contains_any(
     if not needles:
         return default
 
-    return any(
-        normalize_text(needle) in haystack
-        for needle in needles
-    )
+    return any(normalize_text(needle) in haystack for needle in needles)
 
 
 def contains_all(
@@ -230,10 +223,7 @@ def contains_all(
     if not needles:
         return True
 
-    return all(
-        normalize_text(needle) in haystack
-        for needle in needles
-    )
+    return all(normalize_text(needle) in haystack for needle in needles)
 
 
 def normalize_text(value: str) -> str:
@@ -244,30 +234,20 @@ def collect_top_paths(
     results: list[dict[str, Any]],
     limit: int,
 ) -> list[str]:
-    return [
-        get_result_path(item)
-        for item in results[:limit]
-    ]
+    return [get_result_path(item) for item in results[:limit]]
 
 
 def get_result_path(item: dict[str, Any]) -> str:
     payload = item.get("payload") or {}
 
-    return str(
-        payload.get("rel_path")
-        or item.get("path")
-        or ""
-    )
+    return str(payload.get("rel_path") or item.get("path") or "")
 
 
 def get_result_text(item: dict[str, Any]) -> str:
     payload = item.get("payload") or {}
 
-    return str(
-        item.get("text")
-        or payload.get("text")
-        or ""
-    )
+    return str(item.get("text") or payload.get("text") or "")
+
 
 def resolve_eval_path(
     profile: str,
@@ -289,14 +269,36 @@ def resolve_eval_path(
     return Path("eval") / f"queries.{profile}.example.yaml"
 
 
-def build_group_summary(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+def infer_id_prefix(case_id: str) -> str:
+    parts = case_id.split("_")
+
+    if len(parts) >= 2 and parts[0] == "php":
+        return "_".join(parts[:2])
+
+    if parts and parts[0]:
+        return parts[0]
+
+    return "unknown"
+
+
+def normalize_eval_filter_lang(filter_data: dict[str, Any]) -> str:
+    lang = filter_data.get("lang") or filter_data.get("language")
+    if not lang:
+        return "unfiltered"
+
+    return str(lang)
+
+
+def build_summary(
+    rows: list[dict[str, Any]],
+    key: str,
+) -> dict[str, dict[str, Any]]:
     summary: dict[str, dict[str, Any]] = {}
 
     for row in rows:
-        group = str(row.get("group") or "ungrouped")
-
-        if group not in summary:
-            summary[group] = {
+        bucket = str(row.get(key) or "unknown")
+        if bucket not in summary:
+            summary[bucket] = {
                 "total": 0,
                 "hit_at_5": 0,
                 "hit_at_10": 0,
@@ -304,12 +306,10 @@ def build_group_summary(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]
                 "hit_at_10_rate": 0.0,
             }
 
-        item = summary[group]
+        item = summary[bucket]
         item["total"] += 1
-
         if row["hit_at_5"]:
             item["hit_at_5"] += 1
-
         if row["hit_at_10"]:
             item["hit_at_10"] += 1
 
