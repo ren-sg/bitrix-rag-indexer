@@ -79,7 +79,7 @@ def test_prepare_dense_experiment_config_updates_only_generated_configs(
 
     assert generated_embeddings["dense"]["cache_path"] == ".indexer/cache/test_cuda.sqlite"
     assert generated_embeddings["dense"]["cuda"] is True
-    assert generated_embeddings["dense"]["providers"] == ["CUDAExecutionProvider"]
+    assert "providers" not in generated_embeddings["dense"]
     assert generated_embeddings["dense"]["device_ids"] == [0]
     assert generated_embeddings["dense"]["parallel"] == 1
 

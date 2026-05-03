@@ -144,8 +144,7 @@ def update_embeddings_config(
 
     if cuda:
         dense_config["cuda"] = True
-
-    if providers:
+    elif providers:
         dense_config["providers"] = providers
 
     if device_ids:

@@ -2,67 +2,64 @@
 
 ## Цель
 
-Добавить отдельный CUDA-профиль для индексации dense embeddings на NVIDIA GPU, не ломая обычный CPU-профиль и уже созданные Qdrant collections.
+Добавить отдельный CUDA-профиль для `intfloat/multilingual-e5-large`, чтобы ускорить dense embedding на NVIDIA GPU и не ломать обычную CPU-индексацию.
 
-Текущая рабочая схема:
-
-```text
-configs/
-  основной CPU/default profile
-
-.indexer/experiments/multilingual-e5-large/configs/
-  CPU E5 quality profile
-
-.indexer/experiments/multilingual-e5-large-cuda3060/configs/
-  NVIDIA CUDA E5 experiment/profile
-```
-
-Главное правило:
-
-> Не смешивать CPU и CUDA окружения в одной `.venv`.
-
-Для CUDA использовать отдельную venv:
+Текущая стратегия MVP:
 
 ```text
-.venv       обычный CPU режим
-.venv-cuda  NVIDIA CUDA режим
+Fast default:
+  BAAI/bge-small-en-v1.5
+  CPU
+  qdrant-hybrid
+
+Quality CPU:
+  intfloat/multilingual-e5-large
+  CPU
+  qdrant-hybrid
+
+Quality NVIDIA:
+  intfloat/multilingual-e5-large
+  CUDA
+  qdrant-hybrid
 ```
+
+Основное правило:
+
+> CUDA-профиль держать отдельно: отдельная `.venv-cuda`, отдельная Qdrant collection, отдельный embedding cache.
+
+Это нужно, чтобы не смешивать CPU/GPU окружения и не ломать уже рабочие collections.
+
+Архитектурно это соответствует текущей цели MVP: улучшать качество и измеримость индексации через chunking, metadata, dense/sparse/hybrid retrieval и eval, а не ломать общий pipeline. :contentReference[oaicite:0]{index=0}
 
 ---
 
-## Почему отдельная venv
+# 1. Окружения
 
-В обычном CPU-окружении нужны:
+## Обычное CPU окружение
+
+Используется для AMD desktop, обычной разработки и стабильного MVP.
+
+```text
+.venv
+```
+
+Внутри:
 
 ```text
 fastembed
 onnxruntime
 ```
 
-В NVIDIA CUDA-окружении нужны:
-
-```text
-fastembed-gpu
-onnxruntime-gpu
-```
-
-CPU и GPU ONNX-пакеты могут конфликтовать, потому что ставят файлы в один и тот же Python package namespace `onnxruntime`.
-
-Если в окружении одновременно окажутся CPU/GPU варианты, `CUDAExecutionProvider` может исчезнуть, и FastEmbed будет работать только на CPU.
-
----
-
-## AMD / Radeon
-
-Для AMD GPU ничего не трогаем в MVP.
-
-На AMD desktop использовать обычное CPU-окружение:
+Проверка:
 
 ```bash
-rm -rf .venv
-uv venv .venv --python 3.12
-uv sync
 uv run pytest -q
+```
+
+Ожидаемо:
+
+```text
+28 passed
 ```
 
 Проверка CPU providers:
@@ -77,21 +74,54 @@ print("FastEmbed import: OK")
 PY
 ```
 
-Нормально для CPU:
+Нормально:
 
 ```text
 ORT providers: ['AzureExecutionProvider', 'CPUExecutionProvider']
 FastEmbed import: OK
 ```
 
-На AMD не ставить в основную `.venv`:
+## NVIDIA CUDA окружение
+
+Используется только для CUDA-профиля.
+
+```text
+.venv-cuda
+```
+
+Внутри:
+
+```text
+fastembed-gpu
+onnxruntime-gpu
+CUDA runtime libraries from NVIDIA wheels
+```
+
+Не смешивать `.venv` и `.venv-cuda`.
+
+---
+
+# 2. AMD / Radeon
+
+Для AMD GPU в текущем MVP ничего не трогаем.
+
+На AMD использовать только CPU-режим:
 
 ```bash
+rm -rf .venv
+uv venv .venv --python 3.12
+uv sync
+uv run pytest -q
+```
+
+На AMD не ставить в основную `.venv`:
+
+```text
 fastembed-gpu
 onnxruntime-gpu
 ```
 
-Для AMD GPU нужен отдельный backend позже, например:
+Причина: текущий FastEmbed GPU-путь практически ориентирован на CUDA/NVIDIA. Для AMD нужен отдельный backend позже:
 
 ```text
 sentence-transformers + PyTorch ROCm
@@ -102,19 +132,7 @@ sentence-transformers + PyTorch ROCm
 
 ---
 
-# NVIDIA CUDA setup
-
-## 1. Проверить NVIDIA
-
-```bash
-nvidia-smi
-```
-
-Если команда не работает, CUDA-профиль не настраивать.
-
----
-
-## 2. Создать отдельную CUDA venv
+# 3. Создать NVIDIA CUDA venv
 
 Из корня проекта:
 
@@ -127,31 +145,35 @@ uv venv .venv-cuda --python 3.12
 source .venv-cuda/bin/activate
 ```
 
-Проверить Python:
+Проверить:
 
 ```bash
 python -V
+which python
 ```
 
 Ожидаемо:
 
 ```text
 Python 3.12.x
+.../bitrix-rag-indexer/.venv-cuda/bin/python
 ```
 
 ---
 
-## 3. Установить проект и CUDA FastEmbed
+# 4. Установить проект и FastEmbed GPU
 
 В активированной `.venv-cuda`:
 
 ```bash
 uv pip install -e .
-uv pip uninstall fastembed onnxruntime -y
+uv pip uninstall fastembed onnxruntime
 uv pip install fastembed-gpu
 ```
 
-Проверить установленные пакеты:
+Важно: у `uv pip uninstall` нет флага `-y`.
+
+Проверить пакеты:
 
 ```bash
 python - <<'PY'
@@ -165,17 +187,18 @@ for pkg in ["fastembed", "fastembed-gpu", "onnxruntime", "onnxruntime-gpu"]:
 PY
 ```
 
-Для CUDA-окружения желательно:
+Для CUDA-окружения нормально:
 
 ```text
+fastembed not installed
 fastembed-gpu installed
-onnxruntime-gpu installed
 onnxruntime not installed
+onnxruntime-gpu installed
 ```
 
 ---
 
-## 4. Проверить ONNX Runtime providers
+# 5. Проверить ONNX Runtime CUDA provider
 
 ```bash
 python - <<'PY'
@@ -190,10 +213,10 @@ PY
 CUDAExecutionProvider
 ```
 
-Пример нормального результата:
+Пример рабочего результата:
 
 ```text
-['CUDAExecutionProvider', 'CPUExecutionProvider']
+['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
 ```
 
 Если видишь только:
@@ -202,11 +225,66 @@ CUDAExecutionProvider
 ['AzureExecutionProvider', 'CPUExecutionProvider']
 ```
 
-значит CUDA backend не подхватился. Индексацию CUDA collection не запускать.
+CUDA backend не подхватился. Индексацию CUDA collection не запускать.
 
 ---
 
-## 5. Проверить FastEmbed на CUDA
+# 6. CUDA runtime libraries через NVIDIA wheels
+
+Если CUDA provider виден, но при создании модели появляется ошибка вида:
+
+```text
+libcublasLt.so.12: cannot open shared object file
+libcurand.so.10: cannot open shared object file
+libcufft.so.11: cannot open shared object file
+```
+
+нужно поставить CUDA runtime libraries в `.venv-cuda`.
+
+Минимальный набор, который понадобился для текущего запуска:
+
+```bash
+uv pip install \
+  nvidia-cublas-cu12 \
+  nvidia-cuda-runtime-cu12 \
+  nvidia-cudnn-cu12 \
+  nvidia-curand-cu12 \
+  nvidia-cufft-cu12
+```
+
+Выставить `LD_LIBRARY_PATH`:
+
+```bash
+export LD_LIBRARY_PATH="$PWD/.venv-cuda/lib/python3.12/site-packages/nvidia/cublas/lib:$PWD/.venv-cuda/lib/python3.12/site-packages/nvidia/cuda_runtime/lib:$PWD/.venv-cuda/lib/python3.12/site-packages/nvidia/cudnn/lib:$PWD/.venv-cuda/lib/python3.12/site-packages/nvidia/curand/lib:$PWD/.venv-cuda/lib/python3.12/site-packages/nvidia/cufft/lib:${LD_LIBRARY_PATH:-}"
+```
+
+Проверить, что библиотеки находятся:
+
+```bash
+python - <<'PY'
+import site
+from pathlib import Path
+
+for root in site.getsitepackages():
+    root_path = Path(root) / "nvidia"
+    if root_path.exists():
+        for pattern in [
+            "libcublasLt.so*",
+            "libcudart.so*",
+            "libcudnn.so*",
+            "libcurand.so*",
+            "libcufft.so*",
+        ]:
+            for path in root_path.rglob(pattern):
+                print(path)
+PY
+```
+
+---
+
+# 7. Проверить FastEmbed CUDA
+
+Важно: использовать `cuda=True`, а не одновременно `cuda=True` и `providers=["CUDAExecutionProvider"]`.
 
 ```bash
 python - <<'PY'
@@ -214,7 +292,8 @@ from fastembed import TextEmbedding
 
 model = TextEmbedding(
     model_name="BAAI/bge-small-en-v1.5",
-    providers=["CUDAExecutionProvider"],
+    cuda=True,
+    device_ids=[0],
 )
 
 print(model.model.model.get_providers())
@@ -227,21 +306,19 @@ PY
 ['CUDAExecutionProvider', 'CPUExecutionProvider']
 ```
 
-Если получаешь ошибку:
+Если вывод:
 
 ```text
-Provider CUDAExecutionProvider is not available
+['CPUExecutionProvider']
 ```
 
-значит окружение всё ещё CPU-only.
+CUDA не используется.
 
 ---
 
-# Создание отдельного CUDA experiment config
+# 8. Создать CUDA experiment config
 
-## 1. Создать experiment config
-
-В активированной `.venv-cuda`:
+Создать отдельную collection и отдельный cache:
 
 ```bash
 python -m bitrix_rag_indexer.experiments.prepare \
@@ -252,20 +329,17 @@ python -m bitrix_rag_indexer.experiments.prepare \
   --document-prefix "passage: " \
   --cache-path ".indexer/cache/embeddings_cuda3060.sqlite" \
   --cuda \
-  --provider "CUDAExecutionProvider" \
   --device-id 0 \
   --overwrite
 ```
 
-Создастся:
+Важно: не передавать `--provider "CUDAExecutionProvider"` вместе с `--cuda`.
 
-```text
-.indexer/experiments/multilingual-e5-large-cuda3060/configs
-```
+Если generator уже создал `providers`, убрать его вручную из generated config.
 
 ---
 
-## 2. Проверить generated config
+# 9. Проверить generated config
 
 ```bash
 cat .indexer/experiments/multilingual-e5-large-cuda3060/configs/embeddings.yaml
@@ -284,8 +358,6 @@ dense:
   query_prefix: 'query: '
   document_prefix: 'passage: '
   cuda: true
-  providers:
-    - CUDAExecutionProvider
   device_ids:
     - 0
 
@@ -304,70 +376,7 @@ sparse_vector_name: sparse
 distance: Cosine
 ```
 
-Важно:
-
-```text
-cache_path отдельный:
-.indexer/cache/embeddings_cuda3060.sqlite
-
-collection отдельная:
-bitrix_code_mvp_multilingual_e5_large_cuda3060
-```
-
-Это нужно, чтобы не смешивать CPU/GPU benchmark и не портить уже готовые collections.
-
----
-
-# Индексация CUDA collection
-
-## 1. Запустить Qdrant
-
-```bash
-docker compose up -d qdrant
-```
-
-## 2. Индексировать
-
-```bash
-python -m bitrix_rag_indexer.cli index \
-  --profile mvp \
-  --source project_local \
-  --force \
-  --config-dir .indexer/experiments/multilingual-e5-large-cuda3060/configs
-```
-
-Если entrypoint доступен в CUDA venv, можно так:
-
-```bash
-bitrix-rag index \
-  --profile mvp \
-  --source project_local \
-  --force \
-  --config-dir .indexer/experiments/multilingual-e5-large-cuda3060/configs
-```
-
-Сравнивать с CPU E5 baseline:
-
-```text
-CPU E5:
-dense_embed: 2736.61s
-total: 2907.01s
-RSS: 3553 MB
-```
-
-CUDA E5 должен дать меньшее `dense_embed`, если CUDA provider реально используется.
-
----
-
-## Если на RTX 3060 6GB будет OOM
-
-Открой:
-
-```text
-.indexer/experiments/multilingual-e5-large-cuda3060/configs/embeddings.yaml
-```
-
-Снизь:
+Если RTX 3060 6GB падает по OOM, снизить:
 
 ```yaml
 batch_size: 32
@@ -379,17 +388,151 @@ batch_size: 32
 batch_size: 8
 ```
 
-Если снова OOM:
+или:
 
 ```yaml
 batch_size: 4
 ```
 
-Потом повторить index.
+В текущем прогоне `batch_size: 32` отработал успешно.
 
 ---
 
-# Eval CUDA collection
+# 10. Проверить DenseEmbedder проекта
+
+```bash
+python - <<'PY'
+from pathlib import Path
+import yaml
+
+from bitrix_rag_indexer.embeddings.dense import DenseEmbedder
+
+config_path = Path(".indexer/experiments/multilingual-e5-large-cuda3060/configs/embeddings.yaml")
+
+with config_path.open("r", encoding="utf-8") as f:
+    cfg = yaml.safe_load(f)
+
+dense_cfg = cfg["dense"]
+print("dense config:", dense_cfg)
+
+embedder = DenseEmbedder(dense_cfg)
+print("embedder cuda:", getattr(embedder, "cuda", None))
+print("embedder providers:", getattr(embedder, "providers", None))
+print("embedder device_ids:", getattr(embedder, "device_ids", None))
+print("onnx providers:", embedder._model.model.model.get_providers())
+PY
+```
+
+Нужно увидеть:
+
+```text
+embedder cuda: True
+embedder providers: None
+embedder device_ids: [0]
+onnx providers: ['CUDAExecutionProvider', 'CPUExecutionProvider']
+```
+
+Если видишь:
+
+```text
+onnx providers: ['CPUExecutionProvider']
+```
+
+индексацию не запускать.
+
+---
+
+# 11. Индексация CUDA collection
+
+Запустить Qdrant:
+
+```bash
+docker compose up -d qdrant
+```
+
+В активированной `.venv-cuda` и с выставленным `LD_LIBRARY_PATH`:
+
+```bash
+bitrix-rag index \
+  --profile mvp \
+  --source project_local \
+  --force \
+  --config-dir .indexer/experiments/multilingual-e5-large-cuda3060/configs
+```
+
+Или явно через Python из `.venv-cuda`:
+
+```bash
+python -m bitrix_rag_indexer.cli index \
+  --profile mvp \
+  --source project_local \
+  --force \
+  --config-dir .indexer/experiments/multilingual-e5-large-cuda3060/configs
+```
+
+Не использовать `uv run` для CUDA-профиля, пока есть отдельная `.venv-cuda`, чтобы случайно не запустить обычную `.venv`.
+
+---
+
+# 12. Мониторинг GPU
+
+В другом терминале:
+
+```bash
+watch -n 0.5 nvidia-smi
+```
+
+CPU всё равно будет загружен частично:
+
+```text
+tokenization
+batching
+file reading
+payload build
+Qdrant upsert
+SQLite manifest
+sparse/BM25
+```
+
+Но если CUDA используется, VRAM должна быть занята, а `dense_embed` должен быть сильно быстрее CPU.
+
+---
+
+# 13. Текущий результат CUDA E5
+
+CPU E5:
+
+```text
+dense_embed: 2736.61s
+total: 2907.01s
+RSS: 3553 MB
+```
+
+CUDA E5 on RTX 3060 6GB:
+
+```text
+files scanned: 573
+files indexed: 573
+chunks created: 3659
+scanned_mb: 3.3
+
+dense_embed: 145.18s
+qdrant_upsert: 6.30s
+manifest_replace: 5.20s
+total: 160.75s
+RSS: 1244 MB
+```
+
+Ускорение:
+
+```text
+dense_embed: примерно 18.8x быстрее
+total: примерно 18.1x быстрее
+```
+
+---
+
+# 14. Eval CUDA collection
 
 ```bash
 bitrix-rag eval --profile mvp --mode dense --config-dir .indexer/experiments/multilingual-e5-large-cuda3060/configs | grep 'Summary\|Path-only'
@@ -397,7 +540,7 @@ bitrix-rag eval --profile mvp --mode qdrant-sparse --config-dir .indexer/experim
 bitrix-rag eval --profile mvp --mode qdrant-hybrid --config-dir .indexer/experiments/multilingual-e5-large-cuda3060/configs | grep 'Summary\|Path-only'
 ```
 
-Качество должно быть примерно как у CPU E5:
+Ожидаемо качество примерно как у CPU E5:
 
 ```text
 dense:
@@ -408,7 +551,19 @@ hit@10 ~= 37/40
 path@10 ~= 37/40
 ```
 
-Если качество сильно отличается, проверить:
+CPU E5 baseline:
+
+```text
+dense:
+Summary: total=40, hit@5=34/40 (85%), hit@10=35/40 (88%)
+Path-only Summary: total=40, path_hit@5=35/40 (88%), path_hit@10=36/40 (90%)
+
+qdrant-hybrid:
+Summary: total=40, hit@5=37/40 (92%), hit@10=37/40 (92%)
+Path-only Summary: total=40, path_hit@5=37/40 (92%), path_hit@10=37/40 (92%)
+```
+
+Если CUDA eval сильно отличается, проверить:
 
 ```text
 model
@@ -416,13 +571,14 @@ query_prefix
 document_prefix
 collection
 cache_path
-providers
+cuda
 device_ids
+batch_size
 ```
 
 ---
 
-# Проверить collection в Qdrant
+# 15. Проверить Qdrant collections
 
 ```bash
 python - <<'PY'
@@ -453,7 +609,52 @@ PY
 
 ---
 
-# Быстрое переключение профилей
+# 16. Warnings
+
+## Mean pooling warning
+
+```text
+The model intfloat/multilingual-e5-large now uses mean pooling instead of CLS embedding.
+```
+
+Это не ошибка. Это предупреждение FastEmbed о текущем pooling behavior. E5 дал лучший результат на eval, поэтому старую версию FastEmbed сейчас не пинним.
+
+## CUDA/providers warning
+
+```text
+`cuda` and `providers` are mutually exclusive parameters
+```
+
+Это нужно исправить в config.
+
+Неправильно:
+
+```yaml
+cuda: true
+providers:
+  - CUDAExecutionProvider
+```
+
+Правильно:
+
+```yaml
+cuda: true
+device_ids:
+  - 0
+```
+
+## ONNX nodes assigned to CPU
+
+```text
+Some nodes were not assigned to the preferred execution providers...
+ORT explicitly assigns shape related ops to CPU to improve perf.
+```
+
+Это не ошибка. ONNX Runtime может оставлять shape-related операции на CPU. Если при этом `dense_embed` ускорился и VRAM используется, CUDA работает.
+
+---
+
+# 17. Быстрое переключение профилей
 
 ## Fast default CPU
 
@@ -476,11 +677,15 @@ uv run bitrix-rag search "getRows" \
   --config-dir .indexer/experiments/multilingual-e5-large/configs
 ```
 
-## NVIDIA CUDA E5 profile
+## NVIDIA CUDA E5 quality profile
 
 Из `.venv-cuda`:
 
 ```bash
+source .venv-cuda/bin/activate
+
+export LD_LIBRARY_PATH="$PWD/.venv-cuda/lib/python3.12/site-packages/nvidia/cublas/lib:$PWD/.venv-cuda/lib/python3.12/site-packages/nvidia/cuda_runtime/lib:$PWD/.venv-cuda/lib/python3.12/site-packages/nvidia/cudnn/lib:$PWD/.venv-cuda/lib/python3.12/site-packages/nvidia/curand/lib:$PWD/.venv-cuda/lib/python3.12/site-packages/nvidia/cufft/lib:${LD_LIBRARY_PATH:-}"
+
 bitrix-rag search "getRows" \
   --source project_local \
   --mode qdrant-hybrid \
@@ -490,15 +695,13 @@ bitrix-rag search "getRows" \
 
 ---
 
-# Как сделать CUDA profile дефолтом
+# 18. Как сделать CUDA профилем по умолчанию
 
-Есть два варианта.
+## Вариант A. Рекомендованный
 
-## Вариант A. Рекомендованный: не менять `configs/`
+Не менять `configs/`.
 
-Оставить default CPU в `configs/`.
-
-Для CUDA всегда запускать с:
+Для CUDA всегда использовать:
 
 ```bash
 --config-dir .indexer/experiments/multilingual-e5-large-cuda3060/configs
@@ -515,9 +718,7 @@ bitrix-rag search "getRows" \
 
 Это лучший вариант для MVP.
 
----
-
-## Вариант B. Сделать CUDA default в основной конфигурации
+## Вариант B. Сделать CUDA default в `configs/`
 
 Использовать только на NVIDIA-машине и только в `.venv-cuda`.
 
@@ -533,20 +734,24 @@ configs/embeddings.yaml
 dense:
   provider: fastembed
   model: intfloat/multilingual-e5-large
-  batch_size: 8
+  batch_size: 32
   cache_enabled: true
   cache_path: .indexer/cache/embeddings_cuda3060.sqlite
   query_prefix: 'query: '
   document_prefix: 'passage: '
   cuda: true
-  providers:
-    - CUDAExecutionProvider
   device_ids:
     - 0
 
 sparse:
   enabled: true
   model: Qdrant/bm25
+```
+
+Если будет OOM:
+
+```yaml
+batch_size: 8
 ```
 
 Изменить:
@@ -565,7 +770,7 @@ sparse_vector_name: sparse
 distance: Cosine
 ```
 
-После этого обычные команды будут использовать CUDA profile:
+После этого обычные команды в `.venv-cuda` будут использовать CUDA profile:
 
 ```bash
 bitrix-rag search "getRows" \
@@ -583,17 +788,18 @@ bitrix-rag eval --profile mvp --mode qdrant-hybrid
 Минусы:
 
 ```text
-на AMD/CPU машине этот default config будет неудобен;
+на AMD/CPU машине такой default неудобен;
 нужна .venv-cuda;
-если CUDA provider не подхватится, поиск/индексация упадут;
-можно случайно начать писать не туда.
+нужен LD_LIBRARY_PATH;
+если CUDA provider не подхватится, поиск/индексация упадут или уйдут в CPU;
+можно случайно начать писать не в ту collection.
 ```
 
-Поэтому для репозитория лучше не коммитить CUDA как общий default.
+Для общего репозитория лучше не коммитить CUDA как default.
 
 ---
 
-# Что коммитить
+# 19. Что коммитить
 
 Коммитить можно:
 
@@ -602,6 +808,7 @@ src/bitrix_rag_indexer/embeddings/dense.py
 src/bitrix_rag_indexer/experiments/prepare.py
 tests/test_dense_embedder_gpu_config.py
 tests/test_prepare_dense_experiment.py
+eval/reports/cuda-e5-large-setup.md
 ```
 
 Не коммитить:
@@ -610,22 +817,17 @@ tests/test_prepare_dense_experiment.py
 .venv/
 .venv-cuda/
 .indexer/cache/
-.indexer/experiments/* как обязательные runtime artefacts
+.indexer/experiments/
 Qdrant storage
 downloaded models
-```
-
-Если нужно сохранить команды — добавить markdown report, например:
-
-```text
-eval/reports/cuda-e5-large-setup.md
+NVIDIA wheel binaries
 ```
 
 ---
 
-# Что делать после CUDA benchmark
+# 20. Что делать дальше после CUDA benchmark
 
-Если CUDA E5 быстрее и качество совпадает:
+Если CUDA E5 стабильно работает:
 
 ```text
 E5 CUDA = quality profile for NVIDIA laptop
@@ -633,16 +835,15 @@ E5 CPU = quality profile for AMD desktop
 bge-small CPU = fast default
 ```
 
-Если CUDA не быстрее или постоянно OOM:
+Дальше модельные эксперименты остановить.
+
+Следующие улучшения делать не через выбор модели, а через качество корпуса:
 
 ```text
-не мучить MVP;
-оставить E5 CPU как quality profile;
-ускорять индексацию через:
-  - cache;
-  - fewer chunks;
-  - filtering noisy files;
-  - not reindexing unchanged files;
-  - source-level indexing;
-  - later separate sentence-transformers/PyTorch backend if needed.
+1. noisy files / большие JS и template blobs
+2. failed cases по E5 hybrid
+3. chunk count reduction
+4. eval coverage
+5. индексация bitrix/modules/im
+6. отдельные source profiles
 ```
