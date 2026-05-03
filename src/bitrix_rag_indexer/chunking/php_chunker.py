@@ -47,12 +47,21 @@ class PhpPrefixConfig:
     include_symbol_modifiers: bool = True
 
 
+@dataclass(frozen=True)
+class PhpPayloadConfig:
+    include_uses: bool = True
+
+
 NAMESPACE_RE = re.compile(
     r"^\s*namespace\s+([^;{]+)\s*[;{]",
 )
 
 USE_RE = re.compile(
     r"^\s*use\s+([^;]+);",
+)
+
+PHP_TOP_LEVEL_USE_IMPORT_RE = re.compile(
+    r"^use\s+(?:function\s+|const\s+)?[^;]+;\s*$",
 )
 
 CLASS_RE = re.compile(
@@ -121,6 +130,7 @@ def chunk_php_line_based(
     max_uses = int(config.get("max_uses_in_prefix", 24))
     phpdoc_config = build_phpdoc_config(config.get("phpdoc"))
     prefix_config = build_php_prefix_config(config.get("context"))
+    payload_config = build_php_payload_config(config.get("payload"))
 
     if max_chars <= 0:
         raise ValueError("max_chars must be greater than 0")
@@ -195,17 +205,21 @@ def chunk_php_line_based(
             ],
         }
 
+        apply_php_payload_config(
+            metadata=metadata,
+            payload_config=payload_config,
+        )
         phpdoc_metadata = build_phpdoc_metadata(
             text=chunk_text_value,
             config=phpdoc_config,
         )
         metadata.update(phpdoc_metadata)
 
-        embedding_body = build_phpdoc_aware_text_for_embedding(
+        embedding_body = build_php_embedding_body(
             text=chunk_text_value,
-            config=phpdoc_config,
+            phpdoc_config=phpdoc_config,
+            payload_config=payload_config,
         )
-
         text_for_embedding = prefix + "\n\n" + embedding_body
         chunk_id = stable_chunk_id(
             path=path.as_posix(),
@@ -239,6 +253,7 @@ def chunk_php_tree_sitter(
     max_uses = int(config.get("max_uses_in_prefix", 24))
     phpdoc_config = build_phpdoc_config(config.get("phpdoc"))
     prefix_config = build_php_prefix_config(config.get("context"))
+    payload_config = build_php_payload_config(config.get("payload"))
 
     if max_chars <= 0:
         raise ValueError("max_chars must be greater than 0")
@@ -381,6 +396,11 @@ def chunk_php_tree_sitter(
                 max_uses=max_uses,
             )
 
+        apply_php_payload_config(
+            metadata=metadata,
+            payload_config=payload_config,
+        )
+
         metadata["php_chunk_strategy"] = "tree-sitter"
 
         phpdoc_metadata = build_phpdoc_metadata(
@@ -389,9 +409,10 @@ def chunk_php_tree_sitter(
         )
         metadata.update(phpdoc_metadata)
 
-        embedding_body = build_phpdoc_aware_text_for_embedding(
+        embedding_body = build_php_embedding_body(
             text=chunk_text_value,
-            config=phpdoc_config,
+            phpdoc_config=phpdoc_config,
+            payload_config=payload_config,
         )
         text_for_embedding = prefix + "\n\n" + embedding_body
         chunk_id = stable_chunk_id(
@@ -839,6 +860,36 @@ def build_phpdoc_config(raw_config: Any) -> PhpDocConfig:
     )
 
 
+def build_php_embedding_body(
+    *,
+    text: str,
+    phpdoc_config: PhpDocConfig,
+    payload_config: PhpPayloadConfig,
+) -> str:
+    embedding_body = build_phpdoc_aware_text_for_embedding(
+        text=text,
+        config=phpdoc_config,
+    )
+
+    if not payload_config.include_uses:
+        embedding_body = remove_php_top_level_use_imports(embedding_body)
+
+    return embedding_body.strip()
+
+
+def remove_php_top_level_use_imports(text: str) -> str:
+    lines = text.splitlines()
+    result: list[str] = []
+
+    for line in lines:
+        if PHP_TOP_LEVEL_USE_IMPORT_RE.match(line.strip()):
+            continue
+
+        result.append(line)
+
+    return "\n".join(result).strip()
+
+
 def build_phpdoc_aware_text_for_embedding(
     text: str,
     config: PhpDocConfig,
@@ -974,6 +1025,23 @@ def build_php_prefix_config(raw_config: Any) -> PhpPrefixConfig:
             raw_config.get("include_symbol_modifiers", True)
         ),
     )
+
+def build_php_payload_config(raw_config: Any) -> PhpPayloadConfig:
+    if not isinstance(raw_config, dict):
+        return PhpPayloadConfig()
+
+    return PhpPayloadConfig(
+        include_uses=bool(raw_config.get("include_uses", True)),
+    )
+
+
+def apply_php_payload_config(
+    *,
+    metadata: dict[str, Any],
+    payload_config: PhpPayloadConfig,
+) -> None:
+    if not payload_config.include_uses:
+        metadata.pop("php_uses", None)
 
 
 def append_php_uses_lines(

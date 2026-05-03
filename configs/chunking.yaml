@@ -16,6 +16,14 @@ php:
   overlap_chars: 300
   max_uses_in_prefix: 24
   fallback_strategy: "line"
+  context:
+    include_uses: false
+    include_component_context: true
+    include_symbol_fqn: true
+    include_symbol_modifiers: true
+
+  payload:
+    include_uses: false
 
   phpdoc:
     enabled: true

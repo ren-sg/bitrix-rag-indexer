@@ -50,6 +50,8 @@ def test_prepare_dense_experiment_config_updates_only_generated_configs(
         collection="bitrix_code_mvp_bge_m3",
         base_config_dir=base_config_dir,
         output_root=tmp_path / ".indexer" / "experiments",
+        query_prefix="query: ",
+        document_prefix="passage: ",
     )
 
     generated_qdrant = read_yaml(target_config_dir / "qdrant.yaml")
@@ -57,6 +59,9 @@ def test_prepare_dense_experiment_config_updates_only_generated_configs(
 
     assert generated_qdrant["collection"] == "bitrix_code_mvp_bge_m3"
     assert generated_embeddings["dense"]["model"] == "BAAI/bge-m3"
+
+    assert generated_embeddings["dense"]["query_prefix"] == "query: "
+    assert generated_embeddings["dense"]["document_prefix"] == "passage: "
 
     original_qdrant = read_yaml(base_config_dir / "qdrant.yaml")
     original_embeddings = read_yaml(base_config_dir / "embeddings.yaml")

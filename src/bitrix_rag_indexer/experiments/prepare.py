@@ -15,6 +15,8 @@ def prepare_dense_experiment_config(
     collection: str,
     base_config_dir: Path = Path("configs"),
     output_root: Path = Path(".indexer/experiments"),
+    query_prefix: str | None = None,
+    document_prefix: str | None = None,
     overwrite: bool = False,
 ) -> Path:
     experiment_name = normalize_experiment_name(name)
@@ -48,6 +50,8 @@ def prepare_dense_experiment_config(
     update_embeddings_config(
         path=target_config_dir / "embeddings.yaml",
         dense_model=dense_model,
+        query_prefix=query_prefix,
+        document_prefix=document_prefix,
     )
     write_experiment_readme(
         path=target_root / "README.md",
@@ -55,6 +59,8 @@ def prepare_dense_experiment_config(
         dense_model=dense_model,
         collection=collection,
         config_dir=target_config_dir,
+        query_prefix=query_prefix,
+        document_prefix=document_prefix,
     )
 
     return target_config_dir
@@ -91,7 +97,13 @@ def update_qdrant_config(*, path: Path, collection: str) -> None:
     write_yaml_mapping(path, config)
 
 
-def update_embeddings_config(*, path: Path, dense_model: str) -> None:
+def update_embeddings_config(
+    *,
+    path: Path,
+    dense_model: str,
+    query_prefix: str | None = None,
+    document_prefix: str | None = None,
+) -> None:
     config = read_yaml_mapping(path)
 
     dense_config = config.get("dense")
@@ -100,6 +112,13 @@ def update_embeddings_config(*, path: Path, dense_model: str) -> None:
         config["dense"] = dense_config
 
     dense_config["model"] = dense_model
+
+    if query_prefix is not None:
+        dense_config["query_prefix"] = query_prefix
+
+    if document_prefix is not None:
+        dense_config["document_prefix"] = document_prefix
+
     write_yaml_mapping(path, config)
 
 
@@ -133,6 +152,8 @@ def write_experiment_readme(
     dense_model: str,
     collection: str,
     config_dir: Path,
+    query_prefix: str | None = None,
+    document_prefix: str | None = None,
 ) -> None:
     path.write_text(
         "\n".join(
@@ -142,6 +163,8 @@ def write_experiment_readme(
                 f"Dense model: `{dense_model}`",
                 f"Qdrant collection: `{collection}`",
                 f"Config dir: `{config_dir}`",
+                f"Query prefix: `{query_prefix or ''}`",
+                f"Document prefix: `{document_prefix or ''}`",
                 "",
                 "## Commands",
                 "",
@@ -204,6 +227,16 @@ def main() -> None:
         help="Experiment output root",
     )
     parser.add_argument(
+        "--query-prefix",
+        default=None,
+        help="Optional prefix added to search queries before dense embedding",
+    )
+    parser.add_argument(
+        "--document-prefix",
+        default=None,
+        help="Optional prefix added to indexed documents before dense embedding",
+    )
+    parser.add_argument(
         "--overwrite",
         action="store_true",
         help="Overwrite existing experiment config",
@@ -217,6 +250,8 @@ def main() -> None:
         collection=args.collection,
         base_config_dir=args.base_config_dir,
         output_root=args.output_root,
+        query_prefix=args.query_prefix,
+        document_prefix=args.document_prefix,
         overwrite=args.overwrite,
     )
 
