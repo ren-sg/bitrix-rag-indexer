@@ -16,3 +16,14 @@ php:
   overlap_chars: 300
   max_uses_in_prefix: 24
   fallback_strategy: "line"
+
+  phpdoc:
+    enabled: true
+    include_description: true
+
+    # MVP: keep semantic PHPDoc text and deprecation warnings in embeddings.
+    # Do not include noisy API tags yet; we keep only metadata flags for future use.
+    include_tags:
+      - deprecated
+
+    max_chars: 1200

@@ -1,13 +1,14 @@
+import re
 from dataclasses import dataclass
 from pathlib import Path
-import re
+from typing import Any
 
 from bitrix_rag_indexer.chunking.text_chunker import (
     TextChunk,
     split_by_lines_safely,
 )
-from bitrix_rag_indexer.state.hashes import stable_chunk_id
 from bitrix_rag_indexer.parsing.tree_sitter_php import PhpAstSymbol, parse_php_symbols
+from bitrix_rag_indexer.state.hashes import stable_chunk_id
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,20 @@ class PhpContext:
     namespace: str | None
     uses: list[str]
     symbols: list[PhpSymbol]
+
+
+@dataclass(frozen=True)
+class PhpDocConfig:
+    enabled: bool = True
+    include_description: bool = True
+    include_tags: tuple[str, ...] = ("deprecated",)
+    max_chars: int = 1200
+
+
+@dataclass(frozen=True)
+class PhpDocInfo:
+    description: str
+    tags: dict[str, list[str]]
 
 
 NAMESPACE_RE = re.compile(
@@ -45,6 +60,9 @@ FUNCTION_RE = re.compile(
     r"function\s+&?\s*"
     r"([A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*)\s*\("
 )
+
+PHPDOC_BLOCK_RE = re.compile(r"/\*\*.*?\*/", re.DOTALL)
+PHPDOC_TAG_RE = re.compile(r"^@([A-Za-z0-9_-]+)\b\s*(.*)$")
 
 
 def chunk_php(
@@ -93,6 +111,7 @@ def chunk_php_line_based(
     max_chars = int(config.get("max_chars", 2600))
     overlap_chars = int(config.get("overlap_chars", 300))
     max_uses = int(config.get("max_uses_in_prefix", 24))
+    phpdoc_config = build_phpdoc_config(config.get("phpdoc"))
 
     if max_chars <= 0:
         raise ValueError("max_chars must be greater than 0")
@@ -166,7 +185,18 @@ def chunk_php_line_based(
             ],
         }
 
-        text_for_embedding = prefix + "\n\n" + chunk_text_value
+        phpdoc_metadata = build_phpdoc_metadata(
+            text=chunk_text_value,
+            config=phpdoc_config,
+        )
+        metadata.update(phpdoc_metadata)
+
+        embedding_body = build_phpdoc_aware_text_for_embedding(
+            text=chunk_text_value,
+            config=phpdoc_config,
+        )
+
+        text_for_embedding = prefix + "\n\n" + embedding_body
         chunk_id = stable_chunk_id(
             path=path.as_posix(),
             ordinal=ordinal,
@@ -197,6 +227,7 @@ def chunk_php_tree_sitter(
     max_chars = int(config.get("max_chars", 2600))
     overlap_chars = int(config.get("overlap_chars", 300))
     max_uses = int(config.get("max_uses_in_prefix", 24))
+    phpdoc_config = build_phpdoc_config(config.get("phpdoc"))
 
     if max_chars <= 0:
         raise ValueError("max_chars must be greater than 0")
@@ -339,7 +370,17 @@ def chunk_php_tree_sitter(
 
         metadata["php_chunk_strategy"] = "tree-sitter"
 
-        text_for_embedding = prefix + "\n\n" + chunk_text_value
+        phpdoc_metadata = build_phpdoc_metadata(
+            text=chunk_text_value,
+            config=phpdoc_config,
+        )
+        metadata.update(phpdoc_metadata)
+
+        embedding_body = build_phpdoc_aware_text_for_embedding(
+            text=chunk_text_value,
+            config=phpdoc_config,
+        )
+        text_for_embedding = prefix + "\n\n" + embedding_body
         chunk_id = stable_chunk_id(
             path=path.as_posix(),
             ordinal=ordinal,
@@ -744,3 +785,145 @@ def is_useful_residual_php_text(text: str) -> bool:
         return False
 
     return True
+
+def build_phpdoc_config(raw_config: Any) -> PhpDocConfig:
+    if not isinstance(raw_config, dict):
+        return PhpDocConfig()
+
+    include_tags = raw_config.get("include_tags", ("deprecated",))
+    if not isinstance(include_tags, list | tuple):
+        include_tags = ("deprecated",)
+
+    normalized_tags = tuple(
+        str(tag).strip().lstrip("@").casefold()
+        for tag in include_tags
+        if str(tag).strip()
+    )
+
+    return PhpDocConfig(
+        enabled=bool(raw_config.get("enabled", True)),
+        include_description=bool(raw_config.get("include_description", True)),
+        include_tags=normalized_tags,
+        max_chars=int(raw_config.get("max_chars", 1200)),
+    )
+
+
+def build_phpdoc_aware_text_for_embedding(
+    text: str,
+    config: PhpDocConfig,
+) -> str:
+    if not PHPDOC_BLOCK_RE.search(text):
+        return text
+
+    def replace_docblock(match: re.Match[str]) -> str:
+        if not config.enabled:
+            return "\n"
+
+        rendered = render_phpdoc_for_embedding(
+            docblock=match.group(0),
+            config=config,
+        )
+        if not rendered:
+            return "\n"
+
+        return f"\n{rendered}\n"
+
+    return PHPDOC_BLOCK_RE.sub(replace_docblock, text).strip()
+
+
+def render_phpdoc_for_embedding(
+    docblock: str,
+    config: PhpDocConfig,
+) -> str:
+    info = parse_phpdoc_block(docblock)
+    lines: list[str] = []
+
+    if config.include_description and info.description:
+        lines.append("PHPDoc:")
+        lines.append(info.description)
+
+    for tag in config.include_tags:
+        for value in info.tags.get(tag, []):
+            lines.append(f"@{tag} {value}".rstrip())
+
+    rendered = "\n".join(lines).strip()
+    if config.max_chars > 0 and len(rendered) > config.max_chars:
+        return rendered[: config.max_chars].rstrip() + "..."
+
+    return rendered
+
+
+def build_phpdoc_metadata(
+    text: str,
+    config: PhpDocConfig,
+) -> dict[str, Any]:
+    if not config.enabled:
+        return {}
+
+    infos = [
+        parse_phpdoc_block(match.group(0))
+        for match in PHPDOC_BLOCK_RE.finditer(text)
+    ]
+    if not infos:
+        return {}
+
+    tag_names: set[str] = set()
+    summaries: list[str] = []
+
+    for info in infos:
+        if info.description:
+            summaries.append(info.description)
+        tag_names.update(info.tags)
+
+    summary = summaries[0] if summaries else None
+    if summary and len(summary) > 500:
+        summary = summary[:500].rstrip() + "..."
+
+    return {
+        "php_doc_summary": summary,
+        "php_doc_tags": sorted(tag_names),
+        "php_doc_has_deprecated": "deprecated" in tag_names,
+        "php_doc_has_param": "param" in tag_names,
+        "php_doc_has_return": "return" in tag_names,
+        "php_doc_has_throws": "throws" in tag_names,
+    }
+
+
+def parse_phpdoc_block(docblock: str) -> PhpDocInfo:
+    description_lines: list[str] = []
+    tags: dict[str, list[str]] = {}
+    seen_tag = False
+
+    for raw_line in docblock.splitlines():
+        line = clean_phpdoc_line(raw_line)
+        if not line:
+            continue
+
+        tag_match = PHPDOC_TAG_RE.match(line)
+        if tag_match:
+            seen_tag = True
+            tag_name = tag_match.group(1).casefold()
+            tag_value = tag_match.group(2).strip()
+            tags.setdefault(tag_name, []).append(tag_value)
+            continue
+
+        if not seen_tag:
+            description_lines.append(line)
+
+    return PhpDocInfo(
+        description="\n".join(description_lines).strip(),
+        tags=tags,
+    )
+
+
+def clean_phpdoc_line(line: str) -> str:
+    stripped = line.strip()
+
+    if stripped.startswith("/**"):
+        stripped = stripped[3:].strip()
+    if stripped.endswith("*/"):
+        stripped = stripped[:-2].strip()
+    if stripped.startswith("*"):
+        stripped = stripped[1:].strip()
+
+    return stripped
