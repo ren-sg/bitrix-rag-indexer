@@ -486,6 +486,7 @@ def search_query(
     qdrant_cfg = load_yaml(config_dir / "qdrant.yaml")
     embeddings_cfg = load_yaml(config_dir / "embeddings.yaml")
     ranking_cfg = load_yaml(config_dir / "ranking.yaml")
+
     search_cfg = ranking_cfg.get("search", {})
     hybrid_cfg = ranking_cfg.get("hybrid", {})
 
@@ -498,7 +499,6 @@ def search_query(
     store.ensure_payload_indexes()
 
     mode = (mode or default_mode).lower()
-
     if mode not in {"dense", "lexical", "hybrid", "qdrant-sparse", "qdrant-hybrid"}:
         raise ValueError(f"Unsupported search mode: {mode}")
 
@@ -510,8 +510,6 @@ def search_query(
             store=store,
         )
 
-    embedder = DenseEmbedder(embeddings_cfg["dense"])
-    query_vector = embedder.embed([query])[0]
     query_filter = build_qdrant_filter(filters)
 
     if mode == "qdrant-sparse":
@@ -520,6 +518,9 @@ def search_query(
             limit=limit,
             query_filter=query_filter,
         )
+
+    embedder = DenseEmbedder(embeddings_cfg["dense"])
+    query_vector = embedder.embed([query])[0]
 
     if mode == "qdrant-hybrid":
         return store.search_qdrant_hybrid(
