@@ -17,6 +17,11 @@ def prepare_dense_experiment_config(
     output_root: Path = Path(".indexer/experiments"),
     query_prefix: str | None = None,
     document_prefix: str | None = None,
+    cache_path: str | None = None,
+    cuda: bool = False,
+    providers: list[str] | None = None,
+    device_ids: list[int] | None = None,
+    parallel: int | None = None,
     overwrite: bool = False,
 ) -> Path:
     experiment_name = normalize_experiment_name(name)
@@ -52,6 +57,11 @@ def prepare_dense_experiment_config(
         dense_model=dense_model,
         query_prefix=query_prefix,
         document_prefix=document_prefix,
+        cache_path=cache_path,
+        cuda=cuda,
+        providers=providers,
+        device_ids=device_ids,
+        parallel=parallel,
     )
     write_experiment_readme(
         path=target_root / "README.md",
@@ -61,6 +71,11 @@ def prepare_dense_experiment_config(
         config_dir=target_config_dir,
         query_prefix=query_prefix,
         document_prefix=document_prefix,
+        cache_path=cache_path,
+        cuda=cuda,
+        providers=providers,
+        device_ids=device_ids,
+        parallel=parallel,
     )
 
     return target_config_dir
@@ -103,6 +118,11 @@ def update_embeddings_config(
     dense_model: str,
     query_prefix: str | None = None,
     document_prefix: str | None = None,
+    cache_path: str | None = None,
+    cuda: bool = False,
+    providers: list[str] | None = None,
+    device_ids: list[int] | None = None,
+    parallel: int | None = None,
 ) -> None:
     config = read_yaml_mapping(path)
 
@@ -118,6 +138,21 @@ def update_embeddings_config(
 
     if document_prefix is not None:
         dense_config["document_prefix"] = document_prefix
+
+    if cache_path is not None:
+        dense_config["cache_path"] = cache_path
+
+    if cuda:
+        dense_config["cuda"] = True
+
+    if providers:
+        dense_config["providers"] = providers
+
+    if device_ids:
+        dense_config["device_ids"] = device_ids
+
+    if parallel is not None:
+        dense_config["parallel"] = parallel
 
     write_yaml_mapping(path, config)
 
@@ -154,6 +189,11 @@ def write_experiment_readme(
     config_dir: Path,
     query_prefix: str | None = None,
     document_prefix: str | None = None,
+    cache_path: str | None = None,
+    cuda: bool = False,
+    providers: list[str] | None = None,
+    device_ids: list[int] | None = None,
+    parallel: int | None = None,
 ) -> None:
     path.write_text(
         "\n".join(
@@ -165,6 +205,11 @@ def write_experiment_readme(
                 f"Config dir: `{config_dir}`",
                 f"Query prefix: `{query_prefix or ''}`",
                 f"Document prefix: `{document_prefix or ''}`",
+                f"Cache path: `{cache_path or ''}`",
+                f"CUDA: `{cuda}`",
+                f"Providers: `{providers or []}`",
+                f"Device IDs: `{device_ids or []}`",
+                f"Parallel: `{parallel if parallel is not None else ''}`",
                 "",
                 "## Commands",
                 "",
@@ -237,6 +282,37 @@ def main() -> None:
         help="Optional prefix added to indexed documents before dense embedding",
     )
     parser.add_argument(
+        "--cache-path",
+        default=None,
+        help="Optional embedding cache path for this experiment",
+    )
+    parser.add_argument(
+        "--cuda",
+        action="store_true",
+        help="Enable FastEmbed CUDA mode",
+    )
+    parser.add_argument(
+        "--provider",
+        action="append",
+        dest="providers",
+        default=None,
+        help="FastEmbed/ONNX provider. Can be passed multiple times.",
+    )
+    parser.add_argument(
+        "--device-id",
+        action="append",
+        dest="device_ids",
+        type=int,
+        default=None,
+        help="CUDA device id. Can be passed multiple times.",
+    )
+    parser.add_argument(
+        "--parallel",
+        type=int,
+        default=None,
+        help="FastEmbed parallel workers",
+    )
+    parser.add_argument(
         "--overwrite",
         action="store_true",
         help="Overwrite existing experiment config",
@@ -252,6 +328,11 @@ def main() -> None:
         output_root=args.output_root,
         query_prefix=args.query_prefix,
         document_prefix=args.document_prefix,
+        cache_path=args.cache_path,
+        cuda=args.cuda,
+        providers=args.providers,
+        device_ids=args.device_ids,
+        parallel=args.parallel,
         overwrite=args.overwrite,
     )
 

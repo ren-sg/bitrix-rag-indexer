@@ -52,6 +52,11 @@ def test_prepare_dense_experiment_config_updates_only_generated_configs(
         output_root=tmp_path / ".indexer" / "experiments",
         query_prefix="query: ",
         document_prefix="passage: ",
+        cache_path=".indexer/cache/test_cuda.sqlite",
+        cuda=True,
+        providers=["CUDAExecutionProvider"],
+        device_ids=[0],
+        parallel=1,
     )
 
     generated_qdrant = read_yaml(target_config_dir / "qdrant.yaml")
@@ -71,6 +76,12 @@ def test_prepare_dense_experiment_config_updates_only_generated_configs(
 
     assert (target_config_dir / "sources.mvp.yaml").exists()
     assert (target_config_dir.parent / "README.md").exists()
+
+    assert generated_embeddings["dense"]["cache_path"] == ".indexer/cache/test_cuda.sqlite"
+    assert generated_embeddings["dense"]["cuda"] is True
+    assert generated_embeddings["dense"]["providers"] == ["CUDAExecutionProvider"]
+    assert generated_embeddings["dense"]["device_ids"] == [0]
+    assert generated_embeddings["dense"]["parallel"] == 1
 
 
 def write_yaml(path: Path, data: dict) -> None:

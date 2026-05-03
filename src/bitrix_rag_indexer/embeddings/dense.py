@@ -18,7 +18,30 @@ class DenseEmbedder:
         self.query_prefix = str(config.get("query_prefix", ""))
         self.document_prefix = str(config.get("document_prefix", ""))
 
-        self._model = TextEmbedding(model_name=self.model_name)
+        self.cuda = bool(config.get("cuda", False))
+        self.providers = normalize_optional_str_list(config.get("providers"))
+        self.device_ids = normalize_optional_int_list(config.get("device_ids"))
+        self.parallel = normalize_optional_int(config.get("parallel"))
+        self.lazy_load = bool(config.get("lazy_load", False))
+
+        model_kwargs: dict[str, object] = {}
+
+        if self.cuda:
+            model_kwargs["cuda"] = True
+
+        if self.providers is not None:
+            model_kwargs["providers"] = self.providers
+
+        if self.device_ids is not None:
+            model_kwargs["device_ids"] = self.device_ids
+
+        if self.lazy_load:
+            model_kwargs["lazy_load"] = True
+
+        self._model = TextEmbedding(
+            model_name=self.model_name,
+            **model_kwargs,
+        )
         self._cache = (
             EmbeddingCache(self.cache_path)
             if self.cache_enabled
@@ -85,5 +108,47 @@ class DenseEmbedder:
         ]
 
     def _embed_uncached(self, texts: list[str]) -> list[list[float]]:
-        vectors = self._model.embed(texts, batch_size=self.batch_size)
+        embed_kwargs: dict[str, object] = {
+            "batch_size": self.batch_size,
+        }
+
+        if self.parallel is not None:
+            embed_kwargs["parallel"] = self.parallel
+
+        vectors = self._model.embed(texts, **embed_kwargs)
         return [vector.tolist() for vector in vectors]
+
+
+def normalize_optional_str_list(value: object) -> list[str] | None:
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        return [value]
+
+    if isinstance(value, list):
+        result = [str(item) for item in value if str(item)]
+        return result or None
+
+    return None
+
+
+def normalize_optional_int_list(value: object) -> list[int] | None:
+    if value is None:
+        return None
+
+    if isinstance(value, int):
+        return [value]
+
+    if isinstance(value, list):
+        result = [int(item) for item in value]
+        return result or None
+
+    return None
+
+
+def normalize_optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+
+    return int(value)
