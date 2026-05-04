@@ -7,6 +7,24 @@ from fastembed import TextEmbedding
 from bitrix_rag_indexer.embeddings.cache import EmbeddingCache, hash_embedding_text
 
 
+def _preload_onnxruntime_cuda_dependencies() -> None:
+    """Preload CUDA/cuDNN libs from Python site-packages for ONNX Runtime.
+
+    This avoids requiring users to export LD_LIBRARY_PATH manually when CUDA
+    runtime wheels are installed inside the active virtualenv.
+    """
+    try:
+        import onnxruntime as ort
+    except ImportError:
+        return
+
+    preload_dlls = getattr(ort, "preload_dlls", None)
+    if preload_dlls is None:
+        return
+
+    preload_dlls(directory="")
+
+
 class DenseEmbedder:
     def __init__(self, config: dict):
         self.model_name = config.get("model", "BAAI/bge-small-en-v1.5")
@@ -37,6 +55,9 @@ class DenseEmbedder:
 
         if self.lazy_load:
             model_kwargs["lazy_load"] = True
+
+        if config.get("cuda"):
+            _preload_onnxruntime_cuda_dependencies()
 
         self._model = TextEmbedding(
             model_name=self.model_name,
