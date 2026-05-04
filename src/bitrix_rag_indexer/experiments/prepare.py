@@ -18,10 +18,14 @@ def prepare_dense_experiment_config(
     query_prefix: str | None = None,
     document_prefix: str | None = None,
     cache_path: str | None = None,
+    model_cache_dir: str | None = None,
+    local_files_only: bool | None = None,
     cuda: bool = False,
     providers: list[str] | None = None,
     device_ids: list[int] | None = None,
     parallel: int | None = None,
+    onnx_log_severity: int | None = None,
+    preload_cuda_dependencies: bool | None = None,
     overwrite: bool = False,
 ) -> Path:
     experiment_name = normalize_experiment_name(name)
@@ -58,10 +62,14 @@ def prepare_dense_experiment_config(
         query_prefix=query_prefix,
         document_prefix=document_prefix,
         cache_path=cache_path,
+        model_cache_dir=model_cache_dir,
+        local_files_only=local_files_only,
         cuda=cuda,
         providers=providers,
         device_ids=device_ids,
         parallel=parallel,
+        onnx_log_severity=onnx_log_severity,
+        preload_cuda_dependencies=preload_cuda_dependencies,
     )
     write_experiment_readme(
         path=target_root / "README.md",
@@ -72,10 +80,14 @@ def prepare_dense_experiment_config(
         query_prefix=query_prefix,
         document_prefix=document_prefix,
         cache_path=cache_path,
+        model_cache_dir=model_cache_dir,
+        local_files_only=local_files_only,
         cuda=cuda,
         providers=providers,
         device_ids=device_ids,
         parallel=parallel,
+        onnx_log_severity=onnx_log_severity,
+        preload_cuda_dependencies=preload_cuda_dependencies,
     )
 
     return target_config_dir
@@ -119,10 +131,14 @@ def update_embeddings_config(
     query_prefix: str | None = None,
     document_prefix: str | None = None,
     cache_path: str | None = None,
+    model_cache_dir: str | None = None,
+    local_files_only: bool | None = None,
     cuda: bool = False,
     providers: list[str] | None = None,
     device_ids: list[int] | None = None,
     parallel: int | None = None,
+    onnx_log_severity: int | None = None,
+    preload_cuda_dependencies: bool | None = None,
 ) -> None:
     config = read_yaml_mapping(path)
 
@@ -142,8 +158,15 @@ def update_embeddings_config(
     if cache_path is not None:
         dense_config["cache_path"] = cache_path
 
+    if model_cache_dir is not None:
+        dense_config["model_cache_dir"] = model_cache_dir
+
+    if local_files_only is not None:
+        dense_config["local_files_only"] = local_files_only
+
     if cuda:
         dense_config["cuda"] = True
+        dense_config.pop("providers", None)
     elif providers:
         dense_config["providers"] = providers
 
@@ -152,6 +175,12 @@ def update_embeddings_config(
 
     if parallel is not None:
         dense_config["parallel"] = parallel
+
+    if onnx_log_severity is not None:
+        dense_config["onnx_log_severity"] = onnx_log_severity
+
+    if preload_cuda_dependencies is not None:
+        dense_config["preload_cuda_dependencies"] = preload_cuda_dependencies
 
     write_yaml_mapping(path, config)
 
@@ -189,10 +218,14 @@ def write_experiment_readme(
     query_prefix: str | None = None,
     document_prefix: str | None = None,
     cache_path: str | None = None,
+    model_cache_dir: str | None = None,
+    local_files_only: bool | None = None,
     cuda: bool = False,
     providers: list[str] | None = None,
     device_ids: list[int] | None = None,
     parallel: int | None = None,
+    onnx_log_severity: int | None = None,
+    preload_cuda_dependencies: bool | None = None,
 ) -> None:
     path.write_text(
         "\n".join(
@@ -205,10 +238,14 @@ def write_experiment_readme(
                 f"Query prefix: `{query_prefix or ''}`",
                 f"Document prefix: `{document_prefix or ''}`",
                 f"Cache path: `{cache_path or ''}`",
+                f"Model cache dir: `{model_cache_dir or ''}`",
+                f"Local files only: `{local_files_only if local_files_only is not None else ''}`",
                 f"CUDA: `{cuda}`",
                 f"Providers: `{providers or []}`",
                 f"Device IDs: `{device_ids or []}`",
                 f"Parallel: `{parallel if parallel is not None else ''}`",
+                f"ONNX log severity: `{onnx_log_severity if onnx_log_severity is not None else ''}`",
+                f"Preload CUDA dependencies: `{preload_cuda_dependencies if preload_cuda_dependencies is not None else ''}`",
                 "",
                 "## Commands",
                 "",
@@ -286,6 +323,17 @@ def main() -> None:
         help="Optional embedding cache path for this experiment",
     )
     parser.add_argument(
+        "--model-cache-dir",
+        default=None,
+        help="Optional FastEmbed model files cache directory for this experiment",
+    )
+    parser.add_argument(
+        "--local-files-only",
+        action="store_true",
+        default=None,
+        help="Load embedding model only from local model cache",
+    )
+    parser.add_argument(
         "--cuda",
         action="store_true",
         help="Enable FastEmbed CUDA mode",
@@ -312,6 +360,19 @@ def main() -> None:
         help="FastEmbed parallel workers",
     )
     parser.add_argument(
+        "--onnx-log-severity",
+        type=int,
+        default=None,
+        help="ONNX Runtime log severity: 0=verbose, 1=info, 2=warning, 3=error, 4=fatal",
+    )
+    parser.add_argument(
+        "--no-preload-cuda-dependencies",
+        action="store_false",
+        dest="preload_cuda_dependencies",
+        default=None,
+        help="Disable ONNX Runtime CUDA dependency preload from Python site-packages",
+    )
+    parser.add_argument(
         "--overwrite",
         action="store_true",
         help="Overwrite existing experiment config",
@@ -328,10 +389,14 @@ def main() -> None:
         query_prefix=args.query_prefix,
         document_prefix=args.document_prefix,
         cache_path=args.cache_path,
+        model_cache_dir=args.model_cache_dir,
+        local_files_only=args.local_files_only,
         cuda=args.cuda,
         providers=args.providers,
         device_ids=args.device_ids,
         parallel=args.parallel,
+        onnx_log_severity=args.onnx_log_severity,
+        preload_cuda_dependencies=args.preload_cuda_dependencies,
         overwrite=args.overwrite,
     )
 

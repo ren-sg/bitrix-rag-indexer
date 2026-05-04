@@ -30,6 +30,10 @@ def test_prepare_dense_experiment_config_updates_only_generated_configs(
                 "batch_size": 32,
                 "cache_enabled": True,
                 "cache_path": ".indexer/cache/embeddings.sqlite",
+                "model_cache_dir": ".indexer/cache/fastembed_models",
+                "local_files_only": False,
+                "onnx_log_severity": 3,
+                "preload_cuda_dependencies": True,
             },
             "sparse": {
                 "enabled": True,
@@ -53,10 +57,14 @@ def test_prepare_dense_experiment_config_updates_only_generated_configs(
         query_prefix="query: ",
         document_prefix="passage: ",
         cache_path=".indexer/cache/test_cuda.sqlite",
+        model_cache_dir=".indexer/cache/test_fastembed_models",
+        local_files_only=True,
         cuda=True,
         providers=["CUDAExecutionProvider"],
         device_ids=[0],
         parallel=1,
+        onnx_log_severity=3,
+        preload_cuda_dependencies=True,
     )
 
     generated_qdrant = read_yaml(target_config_dir / "qdrant.yaml")
@@ -78,10 +86,17 @@ def test_prepare_dense_experiment_config_updates_only_generated_configs(
     assert (target_config_dir.parent / "README.md").exists()
 
     assert generated_embeddings["dense"]["cache_path"] == ".indexer/cache/test_cuda.sqlite"
+    assert (
+        generated_embeddings["dense"]["model_cache_dir"]
+        == ".indexer/cache/test_fastembed_models"
+    )
+    assert generated_embeddings["dense"]["local_files_only"] is True
     assert generated_embeddings["dense"]["cuda"] is True
     assert "providers" not in generated_embeddings["dense"]
     assert generated_embeddings["dense"]["device_ids"] == [0]
     assert generated_embeddings["dense"]["parallel"] == 1
+    assert generated_embeddings["dense"]["onnx_log_severity"] == 3
+    assert generated_embeddings["dense"]["preload_cuda_dependencies"] is True
 
 
 def write_yaml(path: Path, data: dict) -> None:

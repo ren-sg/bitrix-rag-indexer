@@ -5,24 +5,7 @@ from pathlib import Path
 from fastembed import TextEmbedding
 
 from bitrix_rag_indexer.embeddings.cache import EmbeddingCache, hash_embedding_text
-
-
-def _preload_onnxruntime_cuda_dependencies() -> None:
-    """Preload CUDA/cuDNN libs from Python site-packages for ONNX Runtime.
-
-    This avoids requiring users to export LD_LIBRARY_PATH manually when CUDA
-    runtime wheels are installed inside the active virtualenv.
-    """
-    try:
-        import onnxruntime as ort
-    except ImportError:
-        return
-
-    preload_dlls = getattr(ort, "preload_dlls", None)
-    if preload_dlls is None:
-        return
-
-    preload_dlls(directory="")
+from bitrix_rag_indexer.embeddings.onnx_runtime import OnnxRuntimeEnvironment
 
 
 class DenseEmbedder:
@@ -35,12 +18,17 @@ class DenseEmbedder:
         )
         self.query_prefix = str(config.get("query_prefix", ""))
         self.document_prefix = str(config.get("document_prefix", ""))
-
+        self.model_cache_dir = normalize_optional_path(config.get("model_cache_dir"))
+        self.local_files_only = normalize_optional_bool(config.get("local_files_only"))
         self.cuda = bool(config.get("cuda", False))
         self.providers = normalize_optional_str_list(config.get("providers"))
         self.device_ids = normalize_optional_int_list(config.get("device_ids"))
         self.parallel = normalize_optional_int(config.get("parallel"))
         self.lazy_load = bool(config.get("lazy_load", False))
+        self.onnx_log_severity = int(config.get("onnx_log_severity", 3))
+        self.preload_cuda_dependencies = bool(
+            config.get("preload_cuda_dependencies", True)
+        )
 
         model_kwargs: dict[str, object] = {}
 
@@ -56,8 +44,18 @@ class DenseEmbedder:
         if self.lazy_load:
             model_kwargs["lazy_load"] = True
 
-        if config.get("cuda"):
-            _preload_onnxruntime_cuda_dependencies()
+        if self.model_cache_dir is not None:
+            self.model_cache_dir.mkdir(parents=True, exist_ok=True)
+            model_kwargs["cache_dir"] = str(self.model_cache_dir)
+
+        if self.local_files_only is not None:
+            model_kwargs["local_files_only"] = self.local_files_only
+
+        OnnxRuntimeEnvironment(
+            cuda=self.cuda,
+            log_severity=self.onnx_log_severity,
+            preload_cuda_dependencies=self.preload_cuda_dependencies,
+        ).apply()
 
         self._model = TextEmbedding(
             model_name=self.model_name,
@@ -173,3 +171,18 @@ def normalize_optional_int(value: object) -> int | None:
         return None
 
     return int(value)
+
+
+def normalize_optional_bool(value: object) -> bool | None:
+    if value is None:
+        return None
+
+    return bool(value)
+
+
+def normalize_optional_path(value: object) -> Path | None:
+    if value is None:
+        return None
+
+    path = Path(str(value)).expanduser()
+    return path

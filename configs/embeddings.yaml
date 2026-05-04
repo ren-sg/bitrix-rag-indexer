@@ -4,6 +4,10 @@ dense:
   batch_size: 32
   cache_enabled: true
   cache_path: ".indexer/cache/embeddings.sqlite"
+  model_cache_dir: ".indexer/cache/fastembed_models"
+  local_files_only: false
+  onnx_log_severity: 3
+  preload_cuda_dependencies: true
 
 sparse:
   enabled: true
