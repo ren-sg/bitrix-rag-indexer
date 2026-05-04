@@ -9,5 +9,37 @@ services:
       - qdrant_storage:/qdrant/storage
     restart: unless-stopped
 
+  bitrix-rag-mcp:
+    build:
+      context: .
+      dockerfile: docker/mcp/Dockerfile
+    container_name: bitrix-rag-mcp
+    depends_on:
+      - qdrant
+    environment:
+      BITRIX_RAG_PROFILE: "mvp"
+      BITRIX_RAG_CONFIG_DIR: "/app/configs"
+      BITRIX_RAG_QDRANT_URL: "http://qdrant:6333"
+      BITRIX_RAG_SEARCH_MODE: "qdrant-hybrid"
+      BITRIX_RAG_DEFAULT_LIMIT: "5"
+      BITRIX_RAG_MAX_LIMIT: "20"
+      BITRIX_RAG_MAX_TEXT_CHARS: "3000"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./.indexer/cache:/app/.indexer/cache
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz').read()",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
 volumes:
   qdrant_storage:

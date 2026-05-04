@@ -1,0 +1,10 @@
+.git
+.venv
+.venv-cuda
+.indexer
+.pytest_cache
+.ruff_cache
+__pycache__
+*.pyc
+manual
+eval/reports
