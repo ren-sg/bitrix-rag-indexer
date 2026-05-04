@@ -27,6 +27,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
+      - ${BITRIX_RAG_CONFIG_DIR_HOST:-./configs}:/app/configs:ro
       - ./.indexer/cache:/app/.indexer/cache
     restart: unless-stopped
     healthcheck:
@@ -35,7 +36,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz').read()",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz').read()",
         ]
       interval: 30s
       timeout: 5s

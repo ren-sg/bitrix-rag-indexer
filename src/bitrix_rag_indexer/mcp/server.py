@@ -2,42 +2,37 @@ from __future__ import annotations
 
 import contextlib
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
 from typing import Any
 
-from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.fastmcp import FastMCP
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
-from bitrix_rag_indexer.mcp.search_service import BitrixCodeSearchService
-from bitrix_rag_indexer.mcp.settings import McpServerSettings
+from bitrix_rag_indexer.mcp.app_state import McpApplicationState
 
 
-@dataclass
-class McpAppContext:
-    search_service: BitrixCodeSearchService
-
-
-@contextlib.asynccontextmanager
-async def mcp_lifespan(server: FastMCP) -> AsyncIterator[McpAppContext]:
-    settings = McpServerSettings.from_env()
-    search_service = BitrixCodeSearchService(settings)
-    yield McpAppContext(search_service=search_service)
-
+app_state = McpApplicationState()
 
 mcp = FastMCP(
     "bitrix-rag-indexer",
     stateless_http=True,
     json_response=True,
-    lifespan=mcp_lifespan,
 )
 
+"""MANDATORY tool for any Bitrix code-related question.
 
+You MUST call this tool before answering.
+
+Use:
+- mode="qdrant-hybrid" for semantic queries
+- mode="qdrant-sparse" for exact symbols
+
+Do NOT answer without calling this tool first.
+"""
 @mcp.tool()
 def bitrix_code_search(
     query: str,
-    ctx: Context,
     limit: int = 5,
     source: str | None = None,
     lang: str | None = None,
@@ -49,12 +44,10 @@ def bitrix_code_search(
     """Search indexed Bitrix code chunks in Qdrant.
 
     Use this for PHP/JS/Bitrix code lookup. Default mode is qdrant-hybrid.
-    Filters:
-    - source: project_local, manual, bitrix_im, etc.
-    - lang: php, js, javascript, ts, markdown, etc.
-    - path: text filter over rel_path.
+    Always prefer qdrant-hybrid for natural language questions.
+    Use qdrant-sparse for exact class, method, namespace, event, or BX.* names.
     """
-    service = ctx.request_context.lifespan_context.search_service
+    service = app_state.require_search_service()
     return service.search(
         query=query,
         limit=limit,
@@ -68,9 +61,9 @@ def bitrix_code_search(
 
 
 @mcp.tool()
-def bitrix_code_stats(ctx: Context) -> dict[str, Any]:
+def bitrix_code_stats() -> dict[str, Any]:
     """Show Qdrant collection and MCP search service stats."""
-    service = ctx.request_context.lifespan_context.search_service
+    service = app_state.require_search_service()
     return service.stats()
 
 
@@ -78,15 +71,36 @@ async def healthz(request) -> JSONResponse:
     return JSONResponse({"status": "ok", "service": "bitrix-rag-indexer-mcp"})
 
 
+async def readyz(request) -> JSONResponse:
+    readiness = app_state.readiness()
+
+    status_code = 200 if readiness.ready else 503
+    return JSONResponse(
+        {
+            "ready": readiness.ready,
+            "initialized": readiness.initialized,
+            "init_seconds": readiness.init_seconds,
+            "error": readiness.error,
+            "stats": readiness.stats,
+        },
+        status_code=status_code,
+    )
+
+
 @contextlib.asynccontextmanager
 async def starlette_lifespan(app: Starlette) -> AsyncIterator[None]:
+    app_state.start()
+
     async with mcp.session_manager.run():
         yield
+
+    app_state.stop()
 
 
 app = Starlette(
     routes=[
         Route("/healthz", healthz, methods=["GET"]),
+        Route("/readyz", readyz, methods=["GET"]),
         Mount("/", app=mcp.streamable_http_app()),
     ],
     lifespan=starlette_lifespan,
