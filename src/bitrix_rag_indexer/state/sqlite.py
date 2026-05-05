@@ -1,6 +1,6 @@
-from pathlib import Path
 import sqlite3
 from collections.abc import Iterator
+from pathlib import Path
 
 
 class SQLiteState:

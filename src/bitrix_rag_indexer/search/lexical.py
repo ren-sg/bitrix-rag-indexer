@@ -1,10 +1,9 @@
-from pathlib import Path
 import re
 import sqlite3
+from pathlib import Path
 from typing import Any
 
 from bitrix_rag_indexer.search.filters import SearchFilters
-
 
 TOKEN_RE = re.compile(r"[\wА-Яа-яЁё]+", re.UNICODE)
 

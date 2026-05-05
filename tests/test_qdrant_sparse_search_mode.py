@@ -4,6 +4,7 @@ from typing import Any
 import pytest
 
 from bitrix_rag_indexer import app
+from bitrix_rag_indexer.search import query as search_query_module
 
 
 def test_qdrant_sparse_search_does_not_initialize_dense_embedder(
@@ -80,11 +81,11 @@ def test_qdrant_sparse_search_does_not_initialize_dense_embedder(
                 }
             ]
 
-    monkeypatch.setattr(app, "load_yaml", fake_load_yaml)
-    monkeypatch.setattr(app, "DenseEmbedder", FailingDenseEmbedder)
-    monkeypatch.setattr(app, "QdrantStore", FakeQdrantStore)
+    monkeypatch.setattr(search_query_module, "load_yaml", fake_load_yaml)
+    monkeypatch.setattr(search_query_module, "DenseEmbedder", FailingDenseEmbedder)
+    monkeypatch.setattr(search_query_module, "QdrantStore", FakeQdrantStore)
 
-    results = app.search_query(
+    results = search_query_module.search_query(
         query="BX.ajax",
         limit=10,
         config_dir=tmp_path,

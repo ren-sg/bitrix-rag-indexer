@@ -1,7 +1,6 @@
 import hashlib
 import uuid
 
-
 QDRANT_POINT_NAMESPACE = uuid.uuid5(
     uuid.NAMESPACE_URL,
     "https://github.com/ren-sg/bitrix-rag-indexer",
