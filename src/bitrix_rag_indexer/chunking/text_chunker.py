@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
-from typing import Any
 from pathlib import Path
+from typing import Any
 
 from bitrix_rag_indexer.state.hashes import stable_chunk_id
 

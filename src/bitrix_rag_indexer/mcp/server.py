@@ -11,7 +11,6 @@ from starlette.routing import Mount, Route
 
 from bitrix_rag_indexer.mcp.app_state import McpApplicationState
 
-
 app_state = McpApplicationState()
 
 mcp = FastMCP(

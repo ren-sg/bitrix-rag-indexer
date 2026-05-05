@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -60,10 +60,10 @@ def format_expected_for_console(expected: dict[str, list[str]]) -> str:
 @app.command()
 def index(
     profile: str = typer.Option("mvp", help="Config profile name"),
-    source: Optional[str] = typer.Option(None, help="Index only selected source"),
+    source: str | None = typer.Option(None, help="Index only selected source"),
     force: bool = typer.Option(False, "--force", help="Reindex unchanged files"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Scan files without indexing"),
-    max_files: Optional[int] = typer.Option(
+    max_files: int | None = typer.Option(
         None,
         "--max-files",
         help="Index only first N files from selected source",
@@ -86,10 +86,10 @@ def index(
 def search(
     query: str = typer.Argument(..., help="Search query"),
     limit: int = typer.Option(5, "--limit", "-n", help="Number of results"),
-    source: Optional[str] = typer.Option(None, "--source", help="Filter by source_name"),
-    lang: Optional[str] = typer.Option(None, "--lang", help="Filter by language"),
-    path: Optional[str] = typer.Option(None, "--path", help="Filter by rel_path text"),
-    score_threshold: Optional[float] = typer.Option(
+    source: str | None = typer.Option(None, "--source", help="Filter by source_name"),
+    lang: str | None = typer.Option(None, "--lang", help="Filter by language"),
+    path: str | None = typer.Option(None, "--path", help="Filter by rel_path text"),
+    score_threshold: float | None = typer.Option(
         None,
         "--score-threshold",
         help="Minimal Qdrant score",
@@ -138,7 +138,7 @@ def stats(
 def eval_command(
     profile: str = typer.Option("mvp", help="Config profile name"),
     config_dir: Path = typer.Option(Path("configs"), help="Config directory"),
-    eval_file: Optional[Path] = typer.Option(
+    eval_file: Path | None = typer.Option(
         None,
         "--file",
         help="Eval queries yaml file",

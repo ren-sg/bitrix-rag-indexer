@@ -1,9 +1,9 @@
+import os
 from pathlib import Path
 from typing import Any
-import os
 
-from dotenv import load_dotenv
 import yaml
+from dotenv import load_dotenv
 
 
 def load_yaml(path: Path) -> dict[str, Any]:

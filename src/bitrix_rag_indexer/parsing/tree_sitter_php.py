@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
-import re
 
 import tree_sitter_php as tsphp
 from tree_sitter import Language, Parser

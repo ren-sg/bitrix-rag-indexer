@@ -5,7 +5,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from time import perf_counter
 
-
 PREFERRED_BUCKET_ORDER = [
     "scan",
     "memory_guard",

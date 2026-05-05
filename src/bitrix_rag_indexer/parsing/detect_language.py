@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 EXTENSION_TO_LANGUAGE = {
     ".php": "php",
     ".js": "javascript",

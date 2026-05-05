@@ -16,7 +16,7 @@ class McpServerSettings:
     max_text_chars: int
 
     @classmethod
-    def from_env(cls) -> "McpServerSettings":
+    def from_env(cls) -> McpServerSettings:
         return cls(
             profile=os.getenv("BITRIX_RAG_PROFILE", "mvp"),
             config_dir=Path(os.getenv("BITRIX_RAG_CONFIG_DIR", "configs")),

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from array import array
-from pathlib import Path
 import hashlib
 import sqlite3
+from array import array
+from pathlib import Path
 
 
 def hash_embedding_text(text: str) -> str:
