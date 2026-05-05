@@ -18,6 +18,7 @@ from bitrix_rag_indexer.chunking.text_chunker import chunk_text
 from bitrix_rag_indexer.config.loader import load_yaml
 from bitrix_rag_indexer.discovery.scanner import scan_source
 from bitrix_rag_indexer.embeddings.dense import DenseEmbedder
+from bitrix_rag_indexer.embeddings.sparse import SparseEmbedder
 from bitrix_rag_indexer.metadata.payload import build_payload
 from bitrix_rag_indexer.parsing.detect_language import detect_language
 from bitrix_rag_indexer.state.hashes import sha256_text
@@ -72,6 +73,7 @@ class Indexer:
         self.flush_chunk_threshold = max(self.embed_batch_size * 8, self.upsert_batch_size)
 
         self.embedder = DenseEmbedder(embeddings_cfg["dense"])
+        self.sparse_embedder = SparseEmbedder(embeddings_cfg.get("sparse", {}))
         self.store = QdrantStore(qdrant_cfg, sparse_config=embeddings_cfg.get("sparse"))
 
         if not self.dry_run:
@@ -245,6 +247,8 @@ class Indexer:
             for chunk in job.chunks
         ]
 
+        all_points = []
+
         for chunk_batch in batched(flattened, self.embed_batch_size):
             with self.profiler.measure("memory_guard"):
                 ensure_memory_below_limit(self.max_memory_mb)
@@ -257,13 +261,14 @@ class Indexer:
             with self.profiler.measure("dense_embed"):
                 vectors = self.embedder.embed_documents(texts)
 
+            with self.profiler.measure("sparse_embed"):
+                sparse_vectors = self.sparse_embedder.embed_documents(texts)
+
             with self.profiler.measure("memory_guard"):
                 ensure_memory_below_limit(self.max_memory_mb)
 
-            points = []
-
             with self.profiler.measure("build_payload"):
-                for (job, chunk), vector in zip(chunk_batch, vectors, strict=True):
+                for i, ((job, chunk), vector) in enumerate(zip(chunk_batch, vectors, strict=True)):
                     payload = build_payload(
                         source=job.source,
                         file_path=job.file_path,
@@ -271,22 +276,21 @@ class Indexer:
                         language=job.language,
                     )
 
-                    points.append(
-                        {
-                            "id": chunk.chunk_id,
-                            "vector": vector,
-                            "sparse_text": chunk.text_for_embedding,
-                            "payload": payload,
-                        }
-                    )
+                    point = {
+                        "id": chunk.chunk_id,
+                        "vector": vector,
+                        "sparse_text": chunk.text_for_embedding,
+                        "payload": payload,
+                    }
 
-            for point_batch in batched(points, self.upsert_batch_size):
-                with self.profiler.measure("qdrant_upsert"):
-                    self.store.upsert(point_batch)
+                    if sparse_vectors:
+                        point["sparse_vector"] = sparse_vectors[i]
 
-            del texts
-            del vectors
-            del points
+                    all_points.append(point)
+
+        for point_batch in batched(all_points, self.upsert_batch_size):
+            with self.profiler.measure("qdrant_upsert"):
+                self.store.upsert(point_batch)
 
         for job in self.pending_jobs:
             new_chunk_ids = [chunk.chunk_id for chunk in job.chunks]

@@ -18,7 +18,7 @@ class QdrantStore:
         self.sparse_enabled = bool(self.sparse_config.get("enabled", False))
         self.sparse_model = str(self.sparse_config.get("model", "Qdrant/bm25"))
 
-        self.client = QdrantClient(url=self.url)
+        self.client = QdrantClient(url=self.url, prefer_grpc=True)
 
     def ensure_collection(self, vector_size: int) -> None:
         collections = self.client.get_collections().collections
@@ -55,15 +55,22 @@ class QdrantStore:
             }
 
             if self.sparse_enabled:
-                sparse_text = str(
-                    point.get("sparse_text")
-                    or point.get("payload", {}).get("text")
-                    or ""
-                )
-                vector[self.sparse_vector_name] = models.Document(
-                    text=sparse_text,
-                    model=self.sparse_model,
-                )
+                if "sparse_vector" in point:
+                    sv = point["sparse_vector"]
+                    vector[self.sparse_vector_name] = models.SparseVector(
+                        indices=sv.indices.tolist(),
+                        values=sv.values.tolist(),
+                    )
+                else:
+                    sparse_text = str(
+                        point.get("sparse_text")
+                        or point.get("payload", {}).get("text")
+                        or ""
+                    )
+                    vector[self.sparse_vector_name] = models.Document(
+                        text=sparse_text,
+                        model=self.sparse_model,
+                    )
 
             qdrant_points.append(
                 PointStruct(
@@ -76,6 +83,7 @@ class QdrantStore:
         self.client.upsert(
             collection_name=self.collection,
             points=qdrant_points,
+            wait=False,
         )
 
     def search(
