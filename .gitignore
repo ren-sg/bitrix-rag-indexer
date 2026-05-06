@@ -1,4 +1,5 @@
 # Project specify
+current_prompt.md
 
 # Local eval datasets may contain project-specific paths and business terms
 eval/queries.*.local.yaml

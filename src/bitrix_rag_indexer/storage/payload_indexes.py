@@ -5,10 +5,7 @@ def ensure_payload_indexes(client: QdrantClient, collection_name: str) -> None:
     existing = get_existing_payload_index_names(client, collection_name)
 
     keyword_fields = [
-        "source_name",
-        "source_type",
-        "source",
-        "area",
+        "project",
         "language",
     ]
 

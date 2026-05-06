@@ -15,7 +15,6 @@ DEBUG_PAYLOAD_FIELDS = [
     "php_symbol_is_abstract",
     "php_symbol_is_final",
     "php_symbol_has_body",
-    "module",
 ]
 
 
@@ -23,7 +22,7 @@ def format_search_result(item: dict[str, Any], debug: bool = False) -> Panel:
     payload = item.get("payload") or {}
 
     score = item.get("score", 0.0)
-    source_name = payload.get("source_name", "?")
+    project = payload.get("project", "?")
     language = payload.get("language", "?")
     rel_path = payload.get("rel_path") or item.get("path") or "?"
     start_line = payload.get("start_line", "?")
@@ -31,7 +30,7 @@ def format_search_result(item: dict[str, Any], debug: bool = False) -> Panel:
 
     title = (
         f"{_format_number(score)} | "
-        f"{source_name} | "
+        f"{project} | "
         f"{language} | "
         f"{rel_path}:{start_line}-{end_line}"
     )

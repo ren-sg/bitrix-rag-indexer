@@ -30,29 +30,28 @@ class SQLiteState:
             conn.executescript(
                 """
                 create table if not exists indexed_files (
-                    source_name text not null,
+                    project text not null,
                     path text not null,
                     file_hash text not null,
                     chunk_count integer not null,
                     indexed_at text not null default current_timestamp,
-                    primary key (source_name, path)
+                    primary key (project, path)
                 );
 
                 create table if not exists file_chunks (
-                    source_name text not null,
+                    project text not null,
                     path text not null,
                     chunk_id text not null,
                     ordinal integer not null,
-                    primary key (source_name, path, chunk_id)
+                    primary key (project, path, chunk_id)
                 );
 
-                create index if not exists idx_file_chunks_source_path
-                on file_chunks (source_name, path);
+                create index if not exists idx_file_chunks_project_path
+                on file_chunks (project, path);
 
                 create virtual table if not exists chunk_fts using fts5(
                     chunk_id unindexed,
-                    source_name unindexed,
-                    source_type unindexed,
+                    project unindexed,
                     language unindexed,
                     path unindexed,
                     rel_path unindexed,
@@ -62,3 +61,4 @@ class SQLiteState:
                 );
                 """
             )
+

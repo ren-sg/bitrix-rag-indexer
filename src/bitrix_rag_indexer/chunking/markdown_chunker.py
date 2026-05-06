@@ -1,10 +1,8 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from bitrix_rag_indexer.state.hashes import stable_chunk_id
 
-
-@dataclass(frozen=True)
+@dataclass
 class Chunk:
     chunk_id: str
     text: str
@@ -51,11 +49,7 @@ def chunk_markdown(text: str, path: Path, config: dict) -> list[Chunk]:
             prefix = f"Path: {path.as_posix()}\nLanguage: markdown\n\n"
             text_for_embedding = prefix + part
 
-            chunk_id = stable_chunk_id(
-                path=path.as_posix(),
-                ordinal=ordinal,
-                text=text_for_embedding,
-            )
+            chunk_id = f"chunk-{ordinal}"
 
             chunks.append(
                 Chunk(

@@ -59,21 +59,21 @@ def format_expected_for_console(expected: dict[str, list[str]]) -> str:
 
 @app.command()
 def index(
-    profile: str = typer.Option("mvp", help="Config profile name"),
-    source: str | None = typer.Option(None, help="Index only selected source"),
+    project: str | None = typer.Option(None, "--project", help="Index only this project (default: all)"),
+    lang: str | None = typer.Option(None, "--lang", help="Only index files of this language"),
     force: bool = typer.Option(False, "--force", help="Reindex unchanged files"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Scan files without indexing"),
     max_files: int | None = typer.Option(
         None,
         "--max-files",
-        help="Index only first N files from selected source",
+        help="Index only first N files from selected project",
     ),
     config_dir: Path = typer.Option(Path("configs"), help="Config directory"),
 ) -> None:
-    """Index configured sources."""
+    """Index project(s) from configs/projects/."""
     result = index_source(
-        profile=profile,
-        source_name=source,
+        project_name=project,
+        lang_filter=lang,
         force=force,
         dry_run=dry_run,
         max_files=max_files,
@@ -86,7 +86,7 @@ def index(
 def search(
     query: str = typer.Argument(..., help="Search query"),
     limit: int = typer.Option(5, "--limit", "-n", help="Number of results"),
-    source: str | None = typer.Option(None, "--source", help="Filter by source_name"),
+    project: str | None = typer.Option(None, "--project", help="Filter by project"),
     lang: str | None = typer.Option(None, "--lang", help="Filter by language"),
     path: str | None = typer.Option(None, "--path", help="Filter by rel_path text"),
     score_threshold: float | None = typer.Option(
@@ -108,7 +108,7 @@ def search(
 ) -> None:
     """Search indexed chunks."""
     filters = SearchFilters(
-        source=source,
+        project=project,
         lang=lang,
         path=path,
     )
@@ -136,12 +136,11 @@ def stats(
 
 @app.command("eval")
 def eval_command(
-    profile: str = typer.Option("mvp", help="Config profile name"),
     config_dir: Path = typer.Option(Path("configs"), help="Config directory"),
     eval_file: Path | None = typer.Option(
         None,
         "--file",
-        help="Eval queries yaml file",
+        help="Eval queries YAML file (default: eval/queries.local.yaml or eval/queries.yaml)",
     ),
     limit: int = typer.Option(
         10,
@@ -156,7 +155,6 @@ def eval_command(
 ) -> None:
     """Evaluate search quality against expected paths."""
     result = run_eval(
-        profile=profile,
         config_dir=config_dir,
         eval_file=eval_file,
         default_limit=limit,
@@ -245,15 +243,13 @@ def eval_command(
 
 @app.command()
 def prune(
-    profile: str = typer.Option("mvp", help="Config profile name"),
-    source: str = typer.Option(..., "--source", help="Source name to prune"),
+    project: str = typer.Option(..., "--project", help="Project name to prune"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show stale files without deleting"),
     config_dir: Path = typer.Option(Path("configs"), help="Config directory"),
 ) -> None:
-    """Remove indexed files that no longer match source scan/exclude rules."""
+    """Remove indexed files that no longer match project scan/exclude rules."""
     result = prune_source(
-        profile=profile,
-        source_name=source,
+        project_name=project,
         config_dir=config_dir,
         dry_run=dry_run,
     )

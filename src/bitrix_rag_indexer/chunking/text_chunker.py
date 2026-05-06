@@ -2,10 +2,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from bitrix_rag_indexer.state.hashes import stable_chunk_id
 
-
-@dataclass(frozen=True)
+@dataclass
 class TextChunk:
     chunk_id: str
     text: str
@@ -69,11 +67,7 @@ def chunk_text(
 
         text_for_embedding = prefix + chunk_text_value
 
-        chunk_id = stable_chunk_id(
-            path=path.as_posix(),
-            ordinal=ordinal,
-            text=text_for_embedding,
-        )
+        chunk_id = f"chunk-{ordinal}"
 
         chunks.append(
             TextChunk(

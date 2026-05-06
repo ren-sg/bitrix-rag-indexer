@@ -1,3 +1,5 @@
+"""Legacy manifest tests updated for project-based schema."""
+
 from pathlib import Path
 
 from bitrix_rag_indexer.state.manifest import Manifest
@@ -6,18 +8,16 @@ from bitrix_rag_indexer.state.manifest import Manifest
 def make_fts_record(
     *,
     chunk_id: str,
-    source_name: str = "project_local",
-    source_type: str = "bitrix_project_local",
+    project: str = "my_project",
     language: str = "php",
     path: str = "/project/local/test.php",
-    rel_path: str = "test.php",
+    rel_path: str = "local/test.php",
     text: str = "<?php echo 'test';",
-    text_for_embedding: str = "Path: test.php\nLanguage: php\n<?php echo 'test';",
+    text_for_embedding: str = "Path: local/test.php\nLanguage: php\n<?php echo 'test';",
 ) -> dict:
     return {
         "chunk_id": chunk_id,
-        "source_name": source_name,
-        "source_type": source_type,
+        "project": project,
         "language": language,
         "path": path,
         "rel_path": rel_path,
@@ -40,7 +40,7 @@ def test_replace_file_inserts_file_chunks_and_fts(tmp_path: Path) -> None:
     path = Path("/project/local/test.php")
 
     manifest.replace_file(
-        source_name="project_local",
+        project="my_project",
         path=path,
         file_hash="hash-1",
         chunk_ids=["chunk-1"],
@@ -49,7 +49,7 @@ def test_replace_file_inserts_file_chunks_and_fts(tmp_path: Path) -> None:
         ],
     )
 
-    assert manifest.get_chunk_ids("project_local", path) == ["chunk-1"]
+    assert manifest.get_chunk_ids("my_project", path) == ["chunk-1"]
     assert fetch_chunk_ids(manifest, "chunk_fts") == ["chunk-1"]
 
 
@@ -58,7 +58,7 @@ def test_replace_file_replaces_old_file_chunks_and_fts(tmp_path: Path) -> None:
     path = Path("/project/local/test.php")
 
     manifest.replace_file(
-        source_name="project_local",
+        project="my_project",
         path=path,
         file_hash="hash-1",
         chunk_ids=["old-chunk"],
@@ -68,7 +68,7 @@ def test_replace_file_replaces_old_file_chunks_and_fts(tmp_path: Path) -> None:
     )
 
     manifest.replace_file(
-        source_name="project_local",
+        project="my_project",
         path=path,
         file_hash="hash-2",
         chunk_ids=["new-chunk-1", "new-chunk-2"],
@@ -78,7 +78,7 @@ def test_replace_file_replaces_old_file_chunks_and_fts(tmp_path: Path) -> None:
         ],
     )
 
-    assert manifest.get_chunk_ids("project_local", path) == [
+    assert manifest.get_chunk_ids("my_project", path) == [
         "new-chunk-1",
         "new-chunk-2",
     ]
@@ -93,7 +93,7 @@ def test_delete_file_removes_manifest_rows_and_fts(tmp_path: Path) -> None:
     path = Path("/project/local/test.php")
 
     manifest.replace_file(
-        source_name="project_local",
+        project="my_project",
         path=path,
         file_hash="hash-1",
         chunk_ids=["chunk-1"],
@@ -103,10 +103,10 @@ def test_delete_file_removes_manifest_rows_and_fts(tmp_path: Path) -> None:
     )
 
     manifest.delete_file(
-        source_name="project_local",
+        project="my_project",
         path=path,
     )
 
-    assert manifest.get_chunk_ids("project_local", path) == []
+    assert manifest.get_chunk_ids("my_project", path) == []
     assert fetch_chunk_ids(manifest, "file_chunks") == []
     assert fetch_chunk_ids(manifest, "chunk_fts") == []

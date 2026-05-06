@@ -58,7 +58,6 @@ queries:
     )
 
     result = run_eval(
-        profile="mvp",
         config_dir=tmp_path,
         eval_file=eval_file,
         mode="dense",
@@ -115,7 +114,6 @@ queries:
     )
 
     result = run_eval(
-        profile="mvp",
         config_dir=tmp_path,
         eval_file=eval_file,
         mode="dense",

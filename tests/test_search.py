@@ -12,7 +12,7 @@ def test_normalize_search_lang_aliases() -> None:
 
 
 def test_search_filters_normalizes_lang_on_creation() -> None:
-    filters = SearchFilters(source="project_local", lang="js")
+    filters = SearchFilters(project="my_project", lang="js")
 
     assert filters.lang == "javascript"
 

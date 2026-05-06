@@ -7,36 +7,36 @@ class Manifest:
     def __init__(self, db_path: Path):
         self.state = SQLiteState(db_path)
 
-    def is_file_unchanged(self, source_name: str, path: Path, file_hash: str) -> bool:
+    def is_file_unchanged(self, project: str, path: Path, file_hash: str) -> bool:
         with self.state.connect() as conn:
             row = conn.execute(
                 """
                 select file_hash
                 from indexed_files
-                where source_name = ? and path = ?
+                where project = ? and path = ?
                 """,
-                (source_name, path.as_posix()),
+                (project, path.as_posix()),
             ).fetchone()
 
         return row is not None and row["file_hash"] == file_hash
 
-    def get_chunk_ids(self, source_name: str, path: Path) -> list[str]:
+    def get_chunk_ids(self, project: str, path: Path) -> list[str]:
         with self.state.connect() as conn:
             rows = conn.execute(
                 """
                 select chunk_id
                 from file_chunks
-                where source_name = ? and path = ?
+                where project = ? and path = ?
                 order by ordinal asc
                 """,
-                (source_name, path.as_posix()),
+                (project, path.as_posix()),
             ).fetchall()
 
         return [row["chunk_id"] for row in rows]
 
     def replace_file(
         self,
-        source_name: str,
+        project: str,
         path: Path,
         file_hash: str,
         chunk_ids: list[str],
@@ -51,41 +51,41 @@ class Manifest:
             conn.execute(
                 """
                 delete from file_chunks
-                where source_name = ? and path = ?
+                where project = ? and path = ?
                 """,
-                (source_name, path_text),
+                (project, path_text),
             )
 
             conn.execute(
                 """
                 delete from chunk_fts
-                where source_name = ? and path = ?
+                where project = ? and path = ?
                 """,
-                (source_name, path_text),
+                (project, path_text),
             )
 
             conn.execute(
                 """
                 insert into indexed_files (
-                    source_name,
+                    project,
                     path,
                     file_hash,
                     chunk_count,
                     indexed_at
                 )
                 values (?, ?, ?, ?, current_timestamp)
-                on conflict(source_name, path) do update set
+                on conflict(project, path) do update set
                     file_hash = excluded.file_hash,
                     chunk_count = excluded.chunk_count,
                     indexed_at = current_timestamp
                 """,
-                (source_name, path_text, file_hash, len(chunk_ids)),
+                (project, path_text, file_hash, len(chunk_ids)),
             )
 
             conn.executemany(
                 """
                 insert into file_chunks (
-                    source_name,
+                    project,
                     path,
                     chunk_id,
                     ordinal
@@ -93,7 +93,7 @@ class Manifest:
                 values (?, ?, ?, ?)
                 """,
                 [
-                    (source_name, path_text, chunk_id, ordinal)
+                    (project, path_text, chunk_id, ordinal)
                     for ordinal, chunk_id in enumerate(chunk_ids, start=1)
                 ],
             )
@@ -103,21 +103,19 @@ class Manifest:
                     """
                     insert into chunk_fts (
                         chunk_id,
-                        source_name,
-                        source_type,
+                        project,
                         language,
                         path,
                         rel_path,
                         text,
                         text_for_embedding
                     )
-                    values (?, ?, ?, ?, ?, ?, ?, ?)
+                    values (?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
                         (
                             item["chunk_id"],
-                            item["source_name"],
-                            item["source_type"],
+                            item["project"],
                             item["language"],
                             item["path"],
                             item["rel_path"],
@@ -130,21 +128,21 @@ class Manifest:
 
             conn.commit()
 
-    def list_indexed_paths(self, source_name: str) -> list[Path]:
+    def list_indexed_paths(self, project: str) -> list[Path]:
         with self.state.connect() as conn:
             rows = conn.execute(
                 """
                 select path
                 from indexed_files
-                where source_name = ?
+                where project = ?
                 order by path asc
                 """,
-                (source_name,),
+                (project,),
             ).fetchall()
 
         return [Path(row["path"]) for row in rows]
 
-    def delete_file(self, source_name: str, path: Path) -> None:
+    def delete_file(self, project: str, path: Path) -> None:
         path_text = path.as_posix()
 
         with self.state.connect() as conn:
@@ -153,26 +151,26 @@ class Manifest:
             conn.execute(
                 """
                 delete from file_chunks
-                where source_name = ? and path = ?
+                where project = ? and path = ?
                 """,
-                (source_name, path_text),
+                (project, path_text),
             )
 
             conn.execute(
                 """
                 delete from indexed_files
-                where source_name = ? and path = ?
+                where project = ? and path = ?
                 """,
-                (source_name, path_text),
+                (project, path_text),
             )
 
             if self.sqlite_table_exists(conn, "chunk_fts"):
                 conn.execute(
                     """
                     delete from chunk_fts
-                    where source_name = ? and path = ?
+                    where project = ? and path = ?
                     """,
-                    (source_name, path_text),
+                    (project, path_text),
                 )
 
             conn.commit()

@@ -7,7 +7,6 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class McpServerSettings:
-    profile: str
     config_dir: Path
     qdrant_url: str | None
     default_mode: str
@@ -18,7 +17,6 @@ class McpServerSettings:
     @classmethod
     def from_env(cls) -> McpServerSettings:
         return cls(
-            profile=os.getenv("BITRIX_RAG_PROFILE", "mvp"),
             config_dir=Path(os.getenv("BITRIX_RAG_CONFIG_DIR", "configs")),
             qdrant_url=os.getenv("BITRIX_RAG_QDRANT_URL"),
             default_mode=os.getenv("BITRIX_RAG_SEARCH_MODE", "qdrant-hybrid"),

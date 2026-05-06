@@ -1,0 +1,8 @@
+# Manual notes project — indexes the ./manual directory.
+# This replaces the old "manual" source from sources.mvp.yaml.
+
+project: manual
+root: ./manual
+
+include:
+  - "**/*.md"

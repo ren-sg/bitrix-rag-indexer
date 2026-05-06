@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from bitrix_rag_indexer.chunking.php_chunker import chunk_php
+from bitrix_rag_indexer.chunking.php import chunk_php
 
 
 def test_php_payload_config_can_remove_uses_from_embedding_text_and_metadata() -> None:

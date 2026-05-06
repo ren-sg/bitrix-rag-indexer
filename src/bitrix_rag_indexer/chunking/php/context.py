@@ -1,6 +1,5 @@
 import re
 
-from bitrix_rag_indexer.chunking.php.metadata import dedupe_keep_order
 from bitrix_rag_indexer.chunking.php.models import PhpContext, PhpSymbol
 
 NAMESPACE_RE = re.compile(
@@ -24,6 +23,19 @@ FUNCTION_RE = re.compile(
     r"function\s+&?\s*"
     r"([A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*)\s*\("
 )
+
+def dedupe_keep_order(items: list[str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+
+    for item in items:
+        if item in seen:
+            continue
+
+        result.append(item)
+        seen.add(item)
+
+    return result
 
 def extract_php_context(text: str) -> PhpContext:
     namespace: str | None = None

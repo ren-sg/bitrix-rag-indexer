@@ -1,41 +1,29 @@
 from pathlib import Path
 
 from bitrix_rag_indexer.config.loader import load_yaml
-from bitrix_rag_indexer.discovery.scanner import scan_source
+from bitrix_rag_indexer.config.project import get_project
+from bitrix_rag_indexer.discovery.scanner import scan_project
 from bitrix_rag_indexer.state.manifest import Manifest
 from bitrix_rag_indexer.storage.qdrant_client import QdrantStore
 
 
-def prune_source(
-    profile: str,
-    source_name: str,
+def prune_project(
+    project_name: str,
     config_dir: Path,
     dry_run: bool = False,
 ) -> str:
-    sources_cfg = load_yaml(config_dir / f"sources.{profile}.yaml")
+    project = get_project(config_dir, project_name)
     qdrant_cfg = load_yaml(config_dir / "qdrant.yaml")
-
-    sources = sources_cfg["sources"]
-    matched_sources = [
-        source
-        for source in sources
-        if source["name"] == source_name
-    ]
-
-    if not matched_sources:
-        raise ValueError(f"No source matched: {source_name}")
-
-    source = matched_sources[0]
 
     manifest = Manifest(Path(".indexer/state/index.sqlite"))
     store = QdrantStore(qdrant_cfg)
 
     current_paths = {
         path.resolve().as_posix()
-        for path in scan_source(source)
+        for path in scan_project(project)
     }
 
-    indexed_paths = manifest.list_indexed_paths(source_name=source_name)
+    indexed_paths = manifest.list_indexed_paths(project=project_name)
 
     stale_paths = [
         path
@@ -48,7 +36,7 @@ def prune_source(
 
     for path in stale_paths:
         chunk_ids = manifest.get_chunk_ids(
-            source_name=source_name,
+            project=project_name,
             path=path,
         )
 
@@ -62,7 +50,7 @@ def prune_source(
             store.delete_points(chunk_ids)
 
         manifest.delete_file(
-            source_name=source_name,
+            project=project_name,
             path=path,
         )
 
@@ -70,7 +58,11 @@ def prune_source(
 
     return (
         f"Prune {mode}: "
-        f"source={source_name}, "
+        f"project={project_name}, "
         f"stale_files={deleted_files}, "
         f"stale_chunks={deleted_chunks}"
     )
+
+
+# Keep old name as alias for backward compatibility during transition
+prune_source = prune_project

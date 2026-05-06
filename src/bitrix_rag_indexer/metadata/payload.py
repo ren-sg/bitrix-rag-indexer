@@ -1,27 +1,26 @@
 from pathlib import Path
 from typing import Any
 
+from bitrix_rag_indexer.config.project import ProjectConfig
 from bitrix_rag_indexer.state.hashes import sha256_text
 
 
 def build_payload(
-    source: dict[str, Any],
+    project: ProjectConfig,
     file_path: Path,
     chunk: Any,
     language: str,
 ) -> dict[str, Any]:
-    root = Path(source["root"]).resolve()
-    rel_path = file_path.resolve().relative_to(root).as_posix()
-    metadata = source.get("metadata", {})
+    """Build the minimal Qdrant payload for a chunk.
 
-    payload = {
-        "source_name": source["name"],
-        "source_type": source["type"],
-        "source": metadata.get("source", source["name"]),
-        "area": metadata.get("area"),
-        "module": metadata.get("module"),
+    ``rel_path`` is relative to ``project.root`` so MCP can reconstruct
+    the absolute path as ``project.root / rel_path``.
+    """
+    rel_path = file_path.resolve().relative_to(project.root).as_posix()
+
+    payload: dict[str, Any] = {
+        "project": project.project,
         "language": language,
-        "path": file_path.as_posix(),
         "rel_path": rel_path,
         "start_line": chunk.start_line,
         "end_line": chunk.end_line,

@@ -1,0 +1,31 @@
+exclude:
+  # Git internals
+  - "**/.git/**"
+
+  # Bitrix runtime caches and uploads
+  - "**/cache/**"
+  - "**/managed_cache/**"
+  - "**/stack_cache/**"
+  - "**/upload/**"
+
+  # Dependencies
+  - "**/node_modules/**"
+  - "**/vendor/**"
+
+  # Build artifacts
+  - "**/dist/**"
+  - "**/build/**"
+
+  # Bitrix translations / localization noise
+  - "lang/**"
+  - "**/lang/**"
+  - "locale/**"
+  - "**/locale/**"
+  - "user_lang/**"
+  - "**/user_lang/**"
+
+  # Built/minified/source-map noise
+  - "**/*.min.js"
+  - "**/*.map"
+  - "**/*.map.js"
+  - "**/*.lock"

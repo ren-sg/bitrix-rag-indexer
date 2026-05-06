@@ -22,8 +22,6 @@ from bitrix_rag_indexer.chunking.php.residuals import (
 )
 from bitrix_rag_indexer.chunking.text_chunker import TextChunk, split_by_lines_safely
 from bitrix_rag_indexer.parsing.tree_sitter_php import parse_php_symbols
-from bitrix_rag_indexer.state.hashes import stable_chunk_id
-
 
 def chunk_php_line_based(
     text: str,
@@ -134,11 +132,7 @@ def chunk_php_line_based(
             payload_config=payload_config,
         )
         text_for_embedding = prefix + "\n\n" + embedding_body
-        chunk_id = stable_chunk_id(
-            path=path.as_posix(),
-            ordinal=ordinal,
-            text=text_for_embedding,
-        )
+        chunk_id = f"chunk-{ordinal}"
 
         chunks.append(
             TextChunk(
@@ -327,11 +321,7 @@ def chunk_php_tree_sitter(
             payload_config=payload_config,
         )
         text_for_embedding = prefix + "\n\n" + embedding_body
-        chunk_id = stable_chunk_id(
-            path=path.as_posix(),
-            ordinal=ordinal,
-            text=text_for_embedding,
-        )
+        chunk_id = f"chunk-{ordinal}"
 
         chunks.append(
             TextChunk(

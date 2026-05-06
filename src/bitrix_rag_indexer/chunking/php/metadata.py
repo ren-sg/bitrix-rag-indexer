@@ -71,19 +71,6 @@ def build_php_prefix(
 
     return "\n".join(lines)
 
-def dedupe_keep_order(items: list[str]) -> list[str]:
-    result: list[str] = []
-    seen: set[str] = set()
-
-    for item in items:
-        if item in seen:
-            continue
-
-        result.append(item)
-        seen.add(item)
-
-    return result
-
 def build_php_symbol_prefix(
     path: Path,
     language: str,

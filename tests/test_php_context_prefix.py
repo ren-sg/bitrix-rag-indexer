@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from bitrix_rag_indexer.chunking.php_chunker import chunk_php
+from bitrix_rag_indexer.chunking.php import chunk_php
 
 
 def test_php_symbol_prefix_contains_fqn_and_modifiers() -> None:

@@ -7,16 +7,12 @@ from bitrix_rag_indexer.search.filters import SearchFilters, normalize_search_la
 
 
 def run_eval(
-    profile: str,
     config_dir: Path,
     eval_file: Path | None = None,
     default_limit: int = 10,
     mode: str | None = None,
 ) -> dict[str, Any]:
-    eval_path = resolve_eval_path(
-        profile=profile,
-        eval_file=eval_file,
-    )
+    eval_path = resolve_eval_path(eval_file=eval_file)
 
     data = load_yaml(eval_path)
     cases = data.get("queries", [])
@@ -40,10 +36,9 @@ def run_eval(
         filter_data = case.get("filters") or {}
 
         filters = SearchFilters(
-            source=filter_data.get("source"),
+            project=filter_data.get("project"),
             lang=filter_data.get("lang") or filter_data.get("language"),
             path=filter_data.get("path"),
-            source_type=filter_data.get("source_type"),
         )
 
         results = search_query(
@@ -312,24 +307,19 @@ def get_result_text(item: dict[str, Any]) -> str:
     return str(item.get("text") or payload.get("text") or "")
 
 
-def resolve_eval_path(
-    profile: str,
-    eval_file: Path | None,
-) -> Path:
+def resolve_eval_path(eval_file: Path | None) -> Path:
     if eval_file is not None:
         return eval_file
 
-    local_path = Path("eval") / f"queries.{profile}.local.yaml"
+    for candidate in (
+        Path("eval") / "queries.local.yaml",
+        Path("eval") / "queries.yaml",
+        Path("eval") / "queries.example.yaml",
+    ):
+        if candidate.exists():
+            return candidate
 
-    if local_path.exists():
-        return local_path
-
-    default_path = Path("eval") / f"queries.{profile}.yaml"
-
-    if default_path.exists():
-        return default_path
-
-    return Path("eval") / f"queries.{profile}.example.yaml"
+    return Path("eval") / "queries.example.yaml"
 
 
 def infer_id_prefix(case_id: str) -> str:

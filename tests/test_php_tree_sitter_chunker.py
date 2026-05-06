@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from bitrix_rag_indexer.chunking.php_chunker import chunk_php
+from bitrix_rag_indexer.chunking.php import chunk_php
 
 
 def test_php_tree_sitter_chunker_creates_method_chunks() -> None:

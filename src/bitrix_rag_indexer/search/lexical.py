@@ -27,17 +27,13 @@ class LexicalSearchIndex:
         params: list[Any] = [fts_query]
 
         if filters:
-            if filters.source:
-                where.append("source_name = ?")
-                params.append(filters.source)
+            if filters.project:
+                where.append("project = ?")
+                params.append(filters.project)
 
             if filters.lang:
                 where.append("language = ?")
                 params.append(filters.lang)
-
-            if filters.source_type:
-                where.append("source_type = ?")
-                params.append(filters.source_type)
 
             if filters.path:
                 where.append("rel_path like ?")
@@ -48,8 +44,7 @@ class LexicalSearchIndex:
         sql = f"""
             select
                 chunk_id,
-                source_name,
-                source_type,
+                project,
                 language,
                 path,
                 rel_path,

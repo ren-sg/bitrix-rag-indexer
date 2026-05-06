@@ -25,10 +25,9 @@ def normalize_search_lang(lang: str | None) -> str | None:
 
 @dataclass(frozen=True)
 class SearchFilters:
-    source: str | None = None
+    project: str | None = None
     lang: str | None = None
     path: str | None = None
-    source_type: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "lang", normalize_search_lang(self.lang))
@@ -36,10 +35,9 @@ class SearchFilters:
     def is_empty(self) -> bool:
         return not any(
             [
-                self.source,
+                self.project,
                 self.lang,
                 self.path,
-                self.source_type,
             ]
         )
 
@@ -50,11 +48,11 @@ def build_qdrant_filter(filters: SearchFilters | None) -> models.Filter | None:
 
     must: list[models.Condition] = []
 
-    if filters.source:
+    if filters.project:
         must.append(
             models.FieldCondition(
-                key="source_name",
-                match=models.MatchValue(value=filters.source),
+                key="project",
+                match=models.MatchValue(value=filters.project),
             )
         )
 
@@ -63,14 +61,6 @@ def build_qdrant_filter(filters: SearchFilters | None) -> models.Filter | None:
             models.FieldCondition(
                 key="language",
                 match=models.MatchValue(value=filters.lang),
-            )
-        )
-
-    if filters.source_type:
-        must.append(
-            models.FieldCondition(
-                key="source_type",
-                match=models.MatchValue(value=filters.source_type),
             )
         )
 

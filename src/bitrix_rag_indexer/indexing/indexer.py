@@ -13,15 +13,16 @@ from rich.progress import (
 )
 
 from bitrix_rag_indexer.chunking.markdown_chunker import chunk_markdown
-from bitrix_rag_indexer.chunking.php_chunker import chunk_php
+from bitrix_rag_indexer.chunking.php import chunk_php
 from bitrix_rag_indexer.chunking.text_chunker import chunk_text
 from bitrix_rag_indexer.config.loader import load_yaml
-from bitrix_rag_indexer.discovery.scanner import scan_source
+from bitrix_rag_indexer.config.project import ProjectConfig, get_project, load_all_projects
+from bitrix_rag_indexer.discovery.scanner import scan_project
 from bitrix_rag_indexer.embeddings.dense import DenseEmbedder
 from bitrix_rag_indexer.embeddings.sparse import SparseEmbedder
 from bitrix_rag_indexer.metadata.payload import build_payload
 from bitrix_rag_indexer.parsing.detect_language import detect_language
-from bitrix_rag_indexer.state.hashes import sha256_text
+from bitrix_rag_indexer.state.hashes import sha256_text, stable_chunk_id
 from bitrix_rag_indexer.state.manifest import Manifest
 from bitrix_rag_indexer.storage.qdrant_client import QdrantStore
 from bitrix_rag_indexer.utils.batching import batched
@@ -32,7 +33,7 @@ from bitrix_rag_indexer.utils.profiling import IndexingProfiler, IndexingStats
 
 @dataclass
 class PendingIndexJob:
-    source: dict[str, Any]
+    project: ProjectConfig
     file_path: Path
     language: str
     file_hash: str
@@ -48,19 +49,16 @@ class Indexer:
     def __init__(
         self,
         config_dir: Path,
-        profile: str,
         dry_run: bool,
         force: bool,
     ):
         self.config_dir = config_dir
-        self.profile = profile
         self.dry_run = dry_run
         self.force = force
 
         self.profiler = IndexingProfiler()
         self.stats = IndexingStats()
 
-        self.sources_cfg = load_yaml(config_dir / f"sources.{profile}.yaml")
         qdrant_cfg = load_yaml(config_dir / "qdrant.yaml")
         embeddings_cfg = load_yaml(config_dir / "embeddings.yaml")
         self.chunking_cfg = load_yaml(config_dir / "chunking.yaml")
@@ -82,24 +80,30 @@ class Indexer:
         self.manifest = Manifest(Path(".indexer/state/index.sqlite"))
         self.pending_jobs: list[PendingIndexJob] = []
 
-    def run(self, source_name: str | None, max_files: int | None) -> str:
-        sources = self.sources_cfg["sources"]
-        if source_name:
-            sources = [src for src in sources if src["name"] == source_name]
+    def run(self, project_name: str | None, lang_filter: str | None, max_files: int | None) -> str:
+        if project_name:
+            projects = [get_project(self.config_dir, project_name)]
+        else:
+            projects = load_all_projects(self.config_dir)
 
-        if not sources:
-            raise ValueError(f"No sources matched: {source_name}")
+        if not projects:
+            raise ValueError("No project configs found in configs/projects/")
 
-        for source in sources:
-            self._process_source(source, max_files)
+        for project in projects:
+            self._process_project(project, lang_filter=lang_filter, max_files=max_files)
 
         self._flush_pending_jobs()
 
         return format_index_result(self.stats, self.profiler)
 
-    def _process_source(self, source: dict[str, Any], max_files: int | None) -> None:
+    def _process_project(
+        self,
+        project: ProjectConfig,
+        lang_filter: str | None,
+        max_files: int | None,
+    ) -> None:
         with self.profiler.measure("scan"):
-            files = scan_source(source)
+            files = scan_project(project)
 
         if max_files is not None:
             files = files[:max_files]
@@ -115,7 +119,7 @@ class Indexer:
             TextColumn("RSS: {task.fields[rss]} MB"),
         ) as progress:
             task = progress.add_task(
-                f"Indexing {source['name']}",
+                f"Indexing {project.project}",
                 total=len(files),
                 rss=f"{get_rss_mb():.0f}",
             )
@@ -123,14 +127,14 @@ class Indexer:
             for file_path in files:
                 progress.update(
                     task,
-                    description=f"{source['name']}: {file_path.name}",
+                    description=f"{project.project}: {file_path.name}",
                     rss=f"{get_rss_mb():.0f}",
                 )
 
                 self.stats.scanned += 1
 
                 try:
-                    self._process_file(source, file_path)
+                    self._process_file(project, file_path, lang_filter=lang_filter)
                 except Exception:
                     self.stats.failed += 1
 
@@ -140,7 +144,12 @@ class Indexer:
                     progress.update(task, rss=f"{get_rss_mb():.0f}")
                     progress.advance(task)
 
-    def _process_file(self, source: dict[str, Any], file_path: Path) -> None:
+    def _process_file(
+        self,
+        project: ProjectConfig,
+        file_path: Path,
+        lang_filter: str | None,
+    ) -> None:
         with self.profiler.measure("memory_guard"):
             ensure_memory_below_limit(self.max_memory_mb)
 
@@ -166,11 +175,13 @@ class Indexer:
         with self.profiler.measure("hash"):
             file_hash = sha256_text(text)
 
+        rel_path = file_path.resolve().relative_to(project.root).as_posix()
+
         with self.profiler.measure("manifest_check"):
             unchanged = (
                 not self.force
                 and self.manifest.is_file_unchanged(
-                    source_name=source["name"],
+                    project=project.project,
                     path=file_path,
                     file_hash=file_hash,
                 )
@@ -182,6 +193,10 @@ class Indexer:
 
         with self.profiler.measure("detect_language"):
             language = detect_language(file_path)
+
+        if lang_filter and language != lang_filter:
+            self.stats.skipped += 1
+            return
 
         with self.profiler.measure("chunk"):
             chunks = make_chunks(
@@ -196,14 +211,14 @@ class Indexer:
 
         with self.profiler.measure("manifest_read"):
             old_chunk_ids = self.manifest.get_chunk_ids(
-                source_name=source["name"],
+                project=project.project,
                 path=file_path,
             )
 
         if not chunks:
             with self.profiler.measure("manifest_replace"):
                 self.manifest.replace_file(
-                    source_name=source["name"],
+                    project=project.project,
                     path=file_path,
                     file_hash=file_hash,
                     chunk_ids=[],
@@ -219,7 +234,7 @@ class Indexer:
 
         self.pending_jobs.append(
             PendingIndexJob(
-                source=source,
+                project=project,
                 file_path=file_path,
                 language=language,
                 file_hash=file_hash,
@@ -269,15 +284,26 @@ class Indexer:
 
             with self.profiler.measure("build_payload"):
                 for i, ((job, chunk), vector) in enumerate(zip(chunk_batch, vectors, strict=True)):
+                    rel_path = chunk.chunk_id  # recomputed below via stable_chunk_id
+                    rel_path = job.file_path.resolve().relative_to(job.project.root).as_posix()
+
+                    chunk_id = stable_chunk_id(
+                        project=job.project.project,
+                        rel_path=rel_path,
+                        ordinal=chunk.ordinal,
+                    )
+                    # Keep chunk object's id in sync (used later for manifest)
+                    chunk.chunk_id = chunk_id
+
                     payload = build_payload(
-                        source=job.source,
+                        project=job.project,
                         file_path=job.file_path,
                         chunk=chunk,
                         language=job.language,
                     )
 
                     point = {
-                        "id": chunk.chunk_id,
+                        "id": chunk_id,
                         "vector": vector,
                         "sparse_text": chunk.text_for_embedding,
                         "payload": payload,
@@ -297,7 +323,7 @@ class Indexer:
 
             with self.profiler.measure("fts_records"):
                 chunk_fts_records = build_chunk_fts_records(
-                    source=job.source,
+                    project=job.project,
                     file_path=job.file_path,
                     chunks=job.chunks,
                     language=job.language,
@@ -305,7 +331,7 @@ class Indexer:
 
             with self.profiler.measure("manifest_replace"):
                 self.manifest.replace_file(
-                    source_name=job.source["name"],
+                    project=job.project.project,
                     path=job.file_path,
                     file_hash=job.file_hash,
                     chunk_ids=new_chunk_ids,
@@ -329,36 +355,37 @@ class Indexer:
 
 
 def index_source(
-    profile: str,
-    source_name: str | None,
+    project_name: str | None,
     force: bool,
     dry_run: bool,
     max_files: int | None,
     config_dir: Path,
+    lang_filter: str | None = None,
 ) -> str:
     indexer = Indexer(
         config_dir=config_dir,
-        profile=profile,
         dry_run=dry_run,
         force=force,
     )
-    return indexer.run(source_name=source_name, max_files=max_files)
+    return indexer.run(
+        project_name=project_name,
+        lang_filter=lang_filter,
+        max_files=max_files,
+    )
 
 
 def build_chunk_fts_records(
-    source: dict[str, Any],
+    project: ProjectConfig,
     file_path: Path,
     chunks: list[Any],
     language: str,
 ) -> list[dict[str, Any]]:
-    root = Path(source["root"]).resolve()
-    rel_path = file_path.resolve().relative_to(root).as_posix()
+    rel_path = file_path.resolve().relative_to(project.root).as_posix()
 
     return [
         {
             "chunk_id": chunk.chunk_id,
-            "source_name": source["name"],
-            "source_type": source["type"],
+            "project": project.project,
             "language": language,
             "path": file_path.as_posix(),
             "rel_path": rel_path,

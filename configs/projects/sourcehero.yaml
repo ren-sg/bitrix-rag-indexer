@@ -1,0 +1,27 @@
+# Example Bitrix project config.
+# Copy to my_project.local.yaml (gitignored) and fill in your real values.
+#
+# Fields:
+#   project  - logical name used in payload and CLI --project flag (required)
+#   root     - absolute path to the project root, supports ${ENV_VAR} (required)
+#   path     - sub-directory to scan within root (optional)
+#   include  - glob patterns for files to include
+#   exclude  - additional glob patterns to exclude
+#   exclude_from - list of shared exclude-list YAML files to merge in
+
+project: sourcehero
+root: ${SOURCEHERO_ROOT}
+path: local
+
+include:
+  - "**/*.php"
+  - "**/*.js"
+  - "**/*.ts"
+  - "**/*.vue"
+  - "**/*.md"
+
+exclude_from:
+  - "excludes.bitrix.yaml"
+
+exclude:
+  # Add project-specific excludes here

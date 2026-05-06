@@ -46,7 +46,7 @@ class BitrixCodeSearchService:
         *,
         query: str,
         limit: int | None = None,
-        source: str | None = None,
+        project: str | None = None,
         lang: str | None = None,
         path: str | None = None,
         mode: str | None = None,
@@ -57,7 +57,7 @@ class BitrixCodeSearchService:
         normalized_mode = self._normalize_mode(mode)
 
         filters = SearchFilters(
-            source=source,
+            project=project,
             lang=lang,
             path=path,
         )
@@ -95,7 +95,7 @@ class BitrixCodeSearchService:
             "mode": normalized_mode,
             "limit": normalized_limit,
             "filters": {
-                "source": source,
+                "project": project,
                 "lang": filters.lang,
                 "path": path,
             },
@@ -157,8 +157,7 @@ class BitrixCodeSearchService:
             "id": item.get("id"),
             "score": item.get("score"),
             "path": item.get("path"),
-            "source_name": payload.get("source_name"),
-            "source_type": payload.get("source_type"),
+            "project": payload.get("project"),
             "language": payload.get("language"),
             "rel_path": payload.get("rel_path"),
             "start_line": payload.get("start_line"),
