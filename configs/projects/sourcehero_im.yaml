@@ -10,7 +10,7 @@
 #   exclude_from - list of shared exclude-list YAML files to merge in
 
 project: sourcehero_im
-root: ${SOURCEHERO_ROOT_IM}
+root: ${SOURCEHERO_IM_ROOT}
 
 include:
   - "**/*.php"

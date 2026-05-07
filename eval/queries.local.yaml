@@ -1,0 +1,802 @@
+queries:
+  # ============================================================================
+  # BLOCK 1/3: PHP business/domain code from local/php_interface/src
+  # Цель блока: проверить, как агент ищет пример метода/класса для новой задачи.
+  # Здесь query специально похожи на реальные промпты: "возьми за основу метод...",
+  # "найди обработчик события...", "где формируется...".
+  # TODO: после ручной проверки уточнить text_contains_* реальными именами методов.
+  # ============================================================================
+
+  - id: php_src_deal_user_fields_example
+    query: "метод получения пользовательских полей сделки возьми пример из класса Deal"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "Crm"
+        - "Deal.php"
+      text_contains_any:
+        - "UF_"
+        - "CUserTypeEntity"
+        - "getUserField"
+
+  - id: php_src_deal_update_event_observer_example
+    query: "добавь обработчик события обновления сделки пример OnBeforeCrmDealUpdate автор в наблюдатели"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "Crm"
+        - "DealHandler.php"
+      text_contains_any:
+        - "OnBeforeCrmDealUpdate"
+        - "OBSERVER"
+        - "AUTHOR_ID"
+
+  - id: php_src_crm_form_field_modifier
+    query: "где модифицируются поля формы crm перед отображением карточки сделки"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "Crm"
+        - "Form"
+        - "FieldModifier.php"
+      text_contains_any:
+        - "FieldModifier"
+        - "modify"
+        - "fields"
+
+  - id: php_src_crm_bizproc_automation
+    query: "пример автоматизации бизнес процесса crm для sizing запроса"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "Crm"
+        - "Bizproc"
+        - "Automation.php"
+      text_contains_any:
+        - "Automation"
+        - "Bizproc"
+        - "Workflow"
+        - "CBP"
+        - "getActiveWorkflows"
+        - "CBPWorkflowTemplateLoader"
+
+  - id: php_src_crm_request_approval_bizproc
+    query: "где описано согласование документа через бизнес-процесс crm"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "Crm"
+        - "Bizproc"
+        - "RequestApproval.php"
+      text_contains_any:
+        - "RequestApproval"
+        - "approval"
+        - "approve"
+        - "Bizproc"
+        - "CBPActivity"
+        - "beforeApprove"
+
+  - id: php_src_crm_menu_builder
+    query: "список доступных меню для пользователя crm"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "Crm"
+        - "Menu"
+        - "Menu.php"
+      text_contains_any:
+        - "Menu"
+        - "getAreasByAccess"
+
+  - id: php_src_crm_role_relation_access
+    query: "найди пример связи роли доступа crm с пользователями или группами"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "Crm"
+        - "Access"
+        - "RoleRelation.php"
+      text_contains_any:
+        - "RoleRelation"
+        - "role"
+        - "relation"
+        - "permission"
+        - "findRelation"
+        - "RoleTable"
+        - "RoleRelationTable"
+
+  - id: php_src_crm_config_settings
+    query: "конфигурация crm sizing где лежат настройки сущностей и полей"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "Crm"
+        - "Config.php"
+      text_contains_any:
+        - "Config"
+        - "UF_"
+
+  - id: php_src_category_repository_find_or_list
+    query: "репозиторий категорий sizing пример получения списка категорий или категории по id"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "Category"
+      path_contains_any:
+        - "CategoryRepository.php"
+        - "Category.php"
+      text_contains_any:
+        - "CategoryRepository"
+        - "getList"
+        - "getById"
+        - "find"
+        - "Category"
+        - "CIBlockElement"
+
+  - id: php_src_difficulty_repository
+    query: "репозиторий справочника сложности задачи sizing где получить список сложностей"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "Difficulty"
+        - "DifficultyRepository.php"
+      text_contains_any:
+        - "DifficultyRepository"
+        - "Difficulty"
+        - "getList"
+        - "IblockTable"
+        - "CIBlockElement"
+        - "find"
+
+  - id: php_src_create_area_action
+    query: "action создания площадки sizing пример обработки сохранения новой площадки"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "Action"
+        - "CreateAreaAction.php"
+      text_contains_any:
+        - "CreateAreaAction"
+        - "__invoke"
+        - "create"
+        - "repository"
+        - "Area"
+        - "execute"
+
+  - id: php_src_update_area_action
+    query: "action обновления площадки sizing пример изменения существующей площадки"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "Action"
+        - "UpdateAreaAction.php"
+      text_contains_any:
+        - "UpdateAreaAction"
+        - "__invoke"
+        - "update"
+        - "repository"
+        - "Area"
+        - "execute"
+
+  - id: php_src_remove_area_action
+    query: "action удаления площадки sizing пример удаления сущности"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "Action"
+        - "RemoveAreaAction.php"
+      text_contains_any:
+        - "RemoveAreaAction"
+        - "__invoke"
+        - "remove"
+        - "delete"
+        - "repository"
+        - "Area"
+
+  - id: php_src_area_repository
+    query: "репозиторий площадки sizing пример получения площадок и фильтра по площадке"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "Area"
+        - "AreaRepository.php"
+      text_contains_any:
+        - "IblockTable"
+        - "CIBlockElement"
+        - "AreaRepository"
+        - "Area"
+        - "getList"
+        - "filter"
+
+  - id: php_src_area_department_relation
+    query: "связь площадки и подразделения где хранится отдел площадки"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "Area"
+        - "AreaDepartment.php"
+      text_contains_any:
+        - "AreaDepartment"
+        - "department"
+        - "getManagerDepartment"
+        - "Area"
+
+  - id: php_src_area_model
+    query: "модель площадки sizing поля площадки и объект Area"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "Area"
+        - "Area.php"
+      text_contains_any:
+        - "class Area"
+        - "Area"
+        - "id"
+        - "name"
+        - "AreaDepartment"
+
+  - id: php_src_department_remover
+    query: "пример удаления отдела из sizing структуры или очистки связанных подразделений"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "Department"
+        - "DepartmentRemover.php"
+      text_contains_any:
+        - "DepartmentRemover"
+        - "UserTable"
+        - "remove"
+        - "department"
+        - "SectionTable"
+        - "delete"
+        - "UF_DEPARTMENT"
+        - "update"
+
+  - id: php_src_department_structure
+    query: "где строится структура подразделений для sizing отдела"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "Department"
+        - "Structure.php"
+      text_contains_any:
+        - "Structure"
+        - "department"
+        - "children"
+        - "tree"
+        - "getUserDepartmentHeads"
+        - "getUserDepartmentLead"
+        - "searchTopDepartments"
+        - "getUserDepartments"
+
+  - id: php_src_sizing_department_creator
+    query: "создание sizing подразделения пример добавления отдела"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "Department"
+        - "SizingDepartmentCreator.php"
+      text_contains_any:
+        - "SizingDepartmentCreator"
+        - "create"
+        - "department"
+        - "createDepartmentsForArea"
+        - "createDepartment"
+        - "add"
+
+  - id: php_src_history_stage_entity
+    query: "сущность стадии истории sizing где хранится stage"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "History"
+        - "Stage.php"
+      text_contains_any:
+        - "Stage"
+        - "history"
+        - "getHistoryStages"
+        - "DealStageHistoryTable"
+        - "status"
+        - "stage"
+
+  - id: php_src_history_unread_chat_sender
+    query: "отправка уведомлений о непрочитанных сообщениях в чате сделок"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "History"
+        - "Sender"
+        - "RequestUnreadChatMessagesSender.php"
+      text_contains_any:
+        - "RequestUnreadChatMessagesSender"
+        - "unread"
+        - "chat"
+        - "message"
+        - "recipient"
+        - "getMessages"
+        - "prepareRecipients"
+
+  - id: php_src_history_not_moving_sender
+    query: "уведомление если сделка долго не двигается по стадиям"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "History"
+        - "Sender"
+        - "RequestNotMovingSender.php"
+      text_contains_any:
+        - "RequestNotMovingSender"
+        - "not moving"
+        - "stage"
+        - "send"
+        - "prepareRecipients"
+        - "recipient"
+
+  - id: php_src_history_not_approved_sender
+    query: "уведомление по сделкам, для которых не выбран ответственный после согласования"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "History"
+        - "Sender"
+        - "RequestNotApprovedSender.php"
+      text_contains_any:
+        - "RequestNotApprovedSender"
+        - "approved"
+        - "approval"
+        - "send"
+        - "prepareRecipients"
+        - "recipient"
+
+  - id: php_src_history_timer_dispatcher
+    query: "диспетчер таймера истории sizing который запускает проверки уведомлений"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "php_interface"
+        - "src"
+        - "Sizing"
+        - "History"
+        - "TimerDispatcher.php"
+      text_contains_any:
+        - "TimerDispatcher"
+        - "timer"
+        - "dispatch"
+        - "Sender"
+        - "PhaseSemantics"
+        - "getDealTimerFields"
+        - "DateTime"
+        - "execute"
+
+  - id: php_src_im_settings_and_handler
+    query: "настройки im и обработчик сообщений чата проекта"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_any:
+        - "php_interface/src/Im/ImSettings.php"
+        - "php_interface/src/Im/ImHandler.php"
+      text_contains_any:
+        - "ImSettings"
+        - "ImHandler"
+        - "chat"
+        - "message"
+        - "CIMSettings"
+
+  # ============================================================================
+  # BLOCK 2/3: Components and component templates
+  # Цель блока: искать компонент/шаблон по действию, а не только по имени.
+  # Expected специально привязан к каталогу компонента: агенту обычно нужен весь
+  # компонент, а не случайный chunk из class.php/template.php.
+  # TODO: уточнить text_contains_* после просмотра реальных методов class.php.
+  # ============================================================================
+
+  - id: component_category_list_grid_filter
+    query: "компонент addFilter построение фильтра для грида категорий"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "components"
+      path_contains_any:
+        - "crm.sizing.category.list"
+        - "site.access.request.list"
+        - "user.role"
+      text_contains_any:
+        - "addFilter"
+        - "getFilterFields"
+
+  - id: component_category_list_toolbar
+    query: "компонент добавление Toolbar кнопки на страницу списка"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "components"
+      path_contains_any:
+        - "crm.sizing.area.list"
+        - "crm.sizing.category.list"
+      text_contains_any:
+        - "Toolbar"
+        - "addButton"
+
+  - id: component_category_edit_form_save
+    query: "компонент обработка формы сохранения категории"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "components"
+      path_contains_any:
+        - "crm.sizing.category.edit"
+      text_contains_any:
+        - "saveCategory"
+        - "Category"
+
+  - id: component_area_list_grid_filter
+    query: "компонент построение фильтра и строк грида площадок"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "components"
+      path_contains_any:
+        - "crm.sizing.area.list"
+        - "site.access.request.list"
+        - "user.role"
+      text_contains_any:
+        - "Grid"
+        - "getRows"
+
+  - id: component_area_edit_form_save
+    query: "компонент форма редактирования площадки и сохранение"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "components"
+      path_contains_any:
+        - "crm.sizing.area.edit"
+      text_contains_any:
+        - "_form.php"
+        - "create"
+        - "update"
+        - "Area"
+
+  - id: component_crm_kanban_class_context
+    query: "компонент канбана сделки получение элементов getItems"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "components"
+        - "bitrix"
+        - "crm.kanban"
+      text_contains_any:
+        - "onPrepareComponentParams"
+        - "getItems"
+
+  - id: template_crm_kanban_list_context
+    query: "шаблон crm.kanban где подключается js канбана и параметры страницы"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "templates"
+        - "bitrix24"
+        - "components"
+        - "bitrix"
+        - "crm.kanban"
+      text_contains_any:
+        - "registerExt"
+        - "script"
+        - "Kanban"
+        - "BX.CRM.Kanban"
+        - "Extension"
+
+  - id: component_document_bizproc_activity
+    query: "компонент document.bizproc.activity шаблон активности бизнес процесса документа"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "components"
+        - "document.bizproc.activity"
+      text_contains_any:
+        - "document.bizproc.activity"
+        - "Bizproc"
+        - "Activity"
+        - "CBPTaskService"
+
+  - id: component_mail_chat_recent_messages
+    query: "компонент recent messages последние сообщения чата письмо или уведомление"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "components"
+        - "mail.chat.recent.messages"
+      text_contains_any:
+        - "recent"
+        - "messages"
+        - "chat"
+        - "getAuthors"
+
+  - id: component_mail_crm_event_messages
+    query: "компонент mail.crm.event.messages сообщения crm события для письма"
+    limit: 10
+    filters:
+      source: project_local
+      lang: php
+    expected:
+      path_contains_all:
+        - "components"
+        - "mail.crm.event.messages"
+      text_contains_any:
+        - "convert4mail"
+        - "CRM"
+        - "messages"
+
+  # ============================================================================
+  # BLOCK 3/3: JS / BX framework usage
+  # Цель блока: искать JS chunk по контексту BX API и месту выполнения.
+  # TODO: эти 5 кейсов обязательно уточнить по реальным script.js, потому что
+  # исходные YAML-файлы почти не содержали JS-контекста.
+  # ============================================================================
+
+  - id: js_bx_grid_get_instance
+    query: "получение инстанса грида BX.Main.gridManager.getInstanceById и обновление строк"
+    limit: 10
+    filters:
+      source: project_local
+      lang: js
+    expected:
+      path_contains_all:
+        - "components"
+        - "templates"
+        - "script.js"
+      path_contains_any:
+        - "crm.sizing.area.edit"
+        - "crm.sizing.category.edit"
+      text_contains_all:
+        - "BX.Main.gridManager.getInstanceById"
+      # text_contains_any:
+      #   - "reload"
+      #   - "grid"
+      #   - "Grid"
+
+  - id: js_bx_messagebox_confirm
+    query: "диалоговое окно подтверждения BX.UI.Dialogs.MessageBox перед удалением записи"
+    limit: 10
+    filters:
+      source: project_local
+      lang: js
+    expected:
+      # path_contains_all:
+      #   - "script.js"
+      path_contains_any:
+        - "components"
+        - "templates"
+        # - "crm.sizing.category.list"
+        # - "crm.sizing.area.list"
+        # - "user.role"
+      text_contains_all:
+        - "BX.UI.Dialogs.MessageBox"
+      # text_contains_any:
+      #   - "confirm"
+      #   - "delete"
+      #   - "message"
+
+  - id: js_role_panel_slider_open
+    query: "открытие слайдера RolePanel через BX.SidePanel.Instance.open"
+    limit: 10
+    filters:
+      source: project_local
+      lang: js
+    expected:
+      path_contains_all:
+        - "components"
+        - "templates"
+        - "script.js"
+      path_contains_any:
+        - "site.access.request.create"
+        - "site.access.request.list"
+        - "user.role"
+      text_contains_any:
+        - "RolePanel"
+        - "BX.SidePanel.Instance.open"
+        - "SidePanel"
+        - "slider"
+        - "open"
+
+  - id: js_bx_ajax_component_action
+    query: "ajax обработчик js компонента отправляет запрос через BX.ajax или BX.ajax.runAction"
+    limit: 10
+    filters:
+      source: project_local
+      lang: js
+    expected:
+      path_contains_any:
+        - "script.js"
+      text_contains_any:
+        - "BX.ajax"
+        - "BX.ajax.runAction"
+        - "BX.ajax.runComponentAction"
+
+  - id: js_crm_kanban_template_handler
+    query: "обработчик события js в шаблоне crm.kanban.list канбан сделки bx bind click"
+    limit: 10
+    filters:
+      source: project_local
+      lang: js
+    expected:
+      path_contains_all:
+        - "templates"
+        - "crm.kanban"
+        - "script.js"
+      text_contains_any:
+        - "BX.bind"
+        - "addEventListener"
+        - "onclick"
+        - "Kanban"
