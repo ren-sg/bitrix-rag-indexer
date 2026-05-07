@@ -1,5 +1,5 @@
-url: "http://localhost:6333"
-collection: "bitrix_code_mvp_sparse"
+url: "${BITRIX_RAG_QDRANT_URL}"
+collection: "${BITRIX_RAG_QDRANT_COLLECTION}"
 dense_vector_name: "dense"
 sparse_vector_name: "sparse"
 distance: "Cosine"

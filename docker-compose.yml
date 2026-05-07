@@ -20,6 +20,8 @@ services:
       BITRIX_RAG_PROFILE: "mvp"
       BITRIX_RAG_CONFIG_DIR: "/app/configs"
       BITRIX_RAG_QDRANT_URL: "http://qdrant:6333"
+      BITRIX_RAG_QDRANT_COLLECTION: "${BITRIX_RAG_QDRANT_COLLECTION:-bitrix_code_mvp_sparse}"
+      BITRIX_RAG_DENSE_MODEL: "${BITRIX_RAG_DENSE_MODEL:-BAAI/bge-small-en-v1.5}"
       BITRIX_RAG_SEARCH_MODE: "qdrant-hybrid"
       BITRIX_RAG_DEFAULT_LIMIT: "5"
       BITRIX_RAG_MAX_LIMIT: "20"
