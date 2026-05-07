@@ -3,7 +3,7 @@ from pathlib import Path
 from bitrix_rag_indexer.chunking.php import chunk_php
 
 
-def test_phpdoc_embedding_keeps_description_and_deprecated_only() -> None:
+def test_phpdoc_embedding_keeps_description_only() -> None:
     source = """<?php
 
 namespace App\\Sizing;
@@ -54,24 +54,30 @@ class RequestService
         for chunk in chunks
         if chunk.metadata.get("php_symbol_name") == "remove"
     )
+    
+    assert method_chunk.start_line == 20
+    assert method_chunk.end_line == 23
 
     assert "Удаляет заявку согласования." in method_chunk.text_for_embedding
     assert "Дополнительное смысловое описание метода." in method_chunk.text_for_embedding
-    assert "@deprecated use removeNew instead" in method_chunk.text_for_embedding
+    assert "@deprecated use removeNew instead" not in method_chunk.text_for_embedding
+    assert "Code:\npublic function remove" in method_chunk.text_for_embedding
+    assert "PHPDoc Description:" in method_chunk.text_for_embedding
 
     assert "@param" not in method_chunk.text_for_embedding
     assert "@return" not in method_chunk.text_for_embedding
     assert "@throws" not in method_chunk.text_for_embedding
 
-    assert "@param int $id" in method_chunk.text
-    assert "@return bool" in method_chunk.text
-    assert "@throws \\RuntimeException" in method_chunk.text
+    assert "@param int $id" not in method_chunk.text
+    assert "@return bool" not in method_chunk.text
+    assert "@throws \\RuntimeException" not in method_chunk.text
+    assert "Path: php_interface/src/Sizing/RequestService.php" not in method_chunk.text
 
-    assert method_chunk.metadata["php_doc_has_deprecated"] is True
-    assert method_chunk.metadata["php_doc_has_param"] is True
-    assert method_chunk.metadata["php_doc_has_return"] is True
-    assert method_chunk.metadata["php_doc_has_throws"] is True
-    assert method_chunk.metadata["php_doc_tags"] == [
+    assert method_chunk.metadata["php_doc"]["has_deprecated"] is True
+    assert method_chunk.metadata["php_doc"]["has_param"] is True
+    assert method_chunk.metadata["php_doc"]["has_return"] is True
+    assert method_chunk.metadata["php_doc"]["has_throws"] is True
+    assert method_chunk.metadata["php_doc"]["tags"] == [
         "deprecated",
         "param",
         "return",
@@ -115,11 +121,14 @@ class Example
         for chunk in chunks
         if chunk.metadata.get("php_symbol_name") == "oldMethod"
     )
+    
+    assert method_chunk.start_line == 10
+    assert method_chunk.end_line == 12
 
     assert "Важное описание метода." not in method_chunk.text_for_embedding
     assert "@deprecated old method" not in method_chunk.text_for_embedding
     assert "public function oldMethod" in method_chunk.text_for_embedding
 
-    assert "Важное описание метода." in method_chunk.text
-    assert "@deprecated old method" in method_chunk.text
-    assert "php_doc_summary" not in method_chunk.metadata
+    assert "Важное описание метода." not in method_chunk.text
+    assert "@deprecated old method" not in method_chunk.text
+    assert "php_doc" not in method_chunk.metadata

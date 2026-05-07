@@ -51,14 +51,16 @@ class ElementRepository
     ]
 
     assert method_chunks[0].metadata["php_nearest_type_name"] == "ElementRepository"
-    assert "Find element by id." in method_chunks[0].text
+    assert method_chunks[0].start_line == 12
+    assert "Find element by id." not in method_chunks[0].text
+    assert "Find element by id." in method_chunks[0].text_for_embedding
     # assert "Symbol: method findById" in method_chunks[0].text_for_embedding
     assert (
         "Symbol: public method ElementRepository::findById"
         in method_chunks[0].text_for_embedding
     )
     assert (
-        "Symbol FQN: App\\Iblock\\ElementRepository::findById"
+        "Class: ElementRepository"
         in method_chunks[0].text_for_embedding
     )
 

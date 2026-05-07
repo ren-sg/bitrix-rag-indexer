@@ -9,10 +9,12 @@ from bitrix_rag_indexer.chunking.php.metadata import (
     build_php_residual_metadata,
     build_php_symbol_metadata,
     build_php_symbol_prefix,
+    build_compact_php_prefix,
     build_phpdoc_config,
     build_phpdoc_metadata,
 )
-from bitrix_rag_indexer.chunking.php.phpdoc import build_php_embedding_body
+from bitrix_rag_indexer.chunking.php.bitrix import detect_bitrix_component_context
+from bitrix_rag_indexer.chunking.php.phpdoc import PHPDOC_BLOCK_RE, remove_php_top_level_use_imports
 from bitrix_rag_indexer.chunking.php.residuals import (
     expand_start_line_for_docblock,
     find_residual_ranges,
@@ -126,20 +128,57 @@ def chunk_php_line_based(
         )
         metadata.update(phpdoc_metadata)
 
-        embedding_body = build_php_embedding_body(
-            text=chunk_text_value,
-            phpdoc_config=phpdoc_config,
-            payload_config=payload_config,
+        # Adjust start_line for display if chunk starts with a docblock
+        display_start_line = start_line
+        docblock_match = PHPDOC_BLOCK_RE.match(chunk_text_value)
+        if docblock_match:
+            doc_lines = docblock_match.group(0).count("\n")
+            display_start_line += doc_lines
+            # Also skip leading newlines after docblock
+            remaining = chunk_text_value[docblock_match.end():]
+            display_start_line += (len(remaining) - len(remaining.lstrip())).count("\n")
+
+        clean_code_with_uses = PHPDOC_BLOCK_RE.sub("", chunk_text_value).strip()
+        clean_code = clean_code_with_uses
+        if not payload_config.include_uses:
+            clean_code = remove_php_top_level_use_imports(clean_code)
+
+        compact_prefix = build_compact_php_prefix(
+            path=path,
+            language=language,
+            context=context,
+            start_line=start_line,
+            symbol=None,
         )
-        text_for_embedding = prefix + "\n\n" + embedding_body
+
+        # Add Bitrix context to metadata if applicable
+        bitrix_ctx = detect_bitrix_component_context(path)
+        if bitrix_ctx:
+            metadata.update({
+                "php_bitrix_vendor": bitrix_ctx.get("vendor"),
+                "php_bitrix_component": bitrix_ctx.get("name"),
+                "php_bitrix_path": bitrix_ctx.get("component_path"),
+                "php_bitrix_site_template": bitrix_ctx.get("site_template"),
+                "php_bitrix_component_template": bitrix_ctx.get("component_template"),
+            })
+        
+        parts = [compact_prefix]
+        description = metadata.get("php_doc", {}).get("description")
+        if description:
+            parts.append(f"PHPDoc Description:\n{description}")
+        if clean_code:
+            parts.append(f"Code:\n{clean_code}")
+        
+        text_for_embedding = "\n\n".join(parts)
+
         chunk_id = f"chunk-{ordinal}"
 
         chunks.append(
             TextChunk(
                 chunk_id=chunk_id,
-                text=chunk_text_value,
+                text=clean_code_with_uses,
                 text_for_embedding=text_for_embedding,
-                start_line=start_line,
+                start_line=display_start_line,
                 end_line=end_line,
                 ordinal=ordinal,
                 metadata=metadata,
@@ -192,29 +231,39 @@ def chunk_php_tree_sitter(
     chunk_specs: list[dict] = []
 
     for symbol in callable_symbols:
-        start_line = expand_start_line_for_docblock(
+        doc_start_line = expand_start_line_for_docblock(
             lines=lines,
             start_line=symbol.start_line,
         )
         end_line = symbol.end_line
 
-        if start_line > end_line:
+        if doc_start_line > end_line:
             continue
 
-        symbol_text = slice_lines(
+        # Covered range still includes docblock for protection
+        covered_ranges.append((doc_start_line, end_line))
+
+        # Extract docblock separately
+        docblock_text = ""
+        if doc_start_line < symbol.start_line:
+            docblock_text = slice_lines(
+                lines=lines,
+                start_line=doc_start_line,
+                end_line=symbol.start_line - 1,
+            ).strip()
+
+        code_text = slice_lines(
             lines=lines,
-            start_line=start_line,
+            start_line=symbol.start_line,
             end_line=end_line,
         ).strip()
 
-        if not symbol_text:
+        if not code_text:
             continue
 
-        covered_ranges.append((start_line, end_line))
-
         for part in split_symbol_text_if_needed(
-            text=symbol_text,
-            start_line=start_line,
+            text=code_text,
+            start_line=symbol.start_line,
             max_chars=max_chars,
             overlap_chars=overlap_chars,
         ):
@@ -225,6 +274,7 @@ def chunk_php_tree_sitter(
                     "start_line": part["start_line"],
                     "end_line": part["end_line"],
                     "symbol": symbol,
+                    "docblock": docblock_text,
                 }
             )
 
@@ -309,24 +359,54 @@ def chunk_php_tree_sitter(
 
         metadata["php_chunk_strategy"] = "tree-sitter"
 
+        # Use detached docblock if available, otherwise use raw text (for residuals)
+        doc_text_for_metadata = spec.get("docblock") or chunk_text_value
+        
         phpdoc_metadata = build_phpdoc_metadata(
-            text=chunk_text_value,
+            text=doc_text_for_metadata,
             config=phpdoc_config,
         )
         metadata.update(phpdoc_metadata)
 
-        embedding_body = build_php_embedding_body(
-            text=chunk_text_value,
-            phpdoc_config=phpdoc_config,
-            payload_config=payload_config,
+        clean_code_with_uses = PHPDOC_BLOCK_RE.sub("", chunk_text_value).strip()
+        clean_code = clean_code_with_uses
+        if not payload_config.include_uses:
+            clean_code = remove_php_top_level_use_imports(clean_code)
+
+        compact_prefix = build_compact_php_prefix(
+            path=path,
+            language=language,
+            context=context,
+            start_line=start_line,
+            symbol=symbol,
         )
-        text_for_embedding = prefix + "\n\n" + embedding_body
+
+        # Add Bitrix context to metadata if applicable
+        bitrix_ctx = detect_bitrix_component_context(path)
+        if bitrix_ctx:
+            metadata.update({
+                "php_bitrix_vendor": bitrix_ctx.get("vendor"),
+                "php_bitrix_component": bitrix_ctx.get("name"),
+                "php_bitrix_path": bitrix_ctx.get("component_path"),
+                "php_bitrix_site_template": bitrix_ctx.get("site_template"),
+                "php_bitrix_component_template": bitrix_ctx.get("component_template"),
+            })
+        
+        parts = [compact_prefix]
+        description = metadata.get("php_doc", {}).get("description")
+        if description:
+            parts.append(f"PHPDoc Description:\n{description}")
+        if clean_code:
+            parts.append(f"Code:\n{clean_code}")
+        
+        text_for_embedding = "\n\n".join(parts)
+
         chunk_id = f"chunk-{ordinal}"
 
         chunks.append(
             TextChunk(
                 chunk_id=chunk_id,
-                text=chunk_text_value,
+                text=clean_code_with_uses,
                 text_for_embedding=text_for_embedding,
                 start_line=start_line,
                 end_line=end_line,

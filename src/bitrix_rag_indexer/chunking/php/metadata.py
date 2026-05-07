@@ -1,7 +1,10 @@
 from pathlib import Path
 from typing import Any
 
-from bitrix_rag_indexer.chunking.php.bitrix import build_bitrix_component_context_lines
+from bitrix_rag_indexer.chunking.php.bitrix import (
+    build_bitrix_component_context_lines,
+    detect_bitrix_component_context,
+)
 from bitrix_rag_indexer.chunking.php.context import find_nearest_symbol_before
 from bitrix_rag_indexer.chunking.php.models import (
     PhpContext,
@@ -120,12 +123,58 @@ def build_php_symbol_prefix(
 
     return "\n".join(lines)
 
+def build_compact_php_prefix(
+    path: Path,
+    language: str,
+    context: PhpContext,
+    start_line: int,
+    symbol: PhpAstSymbol | None = None,
+) -> str:
+    lines: list[str] = [
+        f"Path: {path.as_posix()}",
+        f"Language: {language}",
+    ]
+
+    if context.namespace:
+        lines.append(f"Namespace: {context.namespace}")
+
+    if symbol:
+        if symbol.parent_kind and symbol.parent_name:
+            lines.append(f"{symbol.parent_kind.capitalize()}: {symbol.parent_name}")
+        
+        symbol_name = symbol.name
+        if symbol.parent_name and symbol.kind == "method":
+            symbol_name = f"{symbol.parent_name}::{symbol.name}"
+        
+        modifiers = []
+        if symbol.visibility:
+            modifiers.append(symbol.visibility)
+        if symbol.is_static:
+            modifiers.append("static")
+        if symbol.is_abstract:
+            modifiers.append("abstract")
+        if symbol.is_final:
+            modifiers.append("final")
+        
+        mod_prefix = " ".join(modifiers) + " " if modifiers else ""
+        lines.append(f"Symbol: {mod_prefix}{symbol.kind} {symbol_name}")
+    else:
+        nearest_class = find_nearest_symbol_before(
+            symbols=context.symbols,
+            kinds={"class", "interface", "trait", "enum"},
+            line=start_line,
+        )
+        if nearest_class:
+            lines.append(f"{nearest_class.kind.capitalize()}: {nearest_class.name}")
+
+    return "\n".join(lines)
+
 def build_php_symbol_metadata(
     context: PhpContext,
     symbol: PhpAstSymbol,
     max_uses: int,
 ) -> dict:
-    return {
+    metadata = {
         "php_namespace": context.namespace,
         "php_uses": context.uses[:max_uses],
         "php_nearest_type_kind": symbol.parent_kind,
@@ -156,6 +205,14 @@ def build_php_symbol_metadata(
         "php_symbol_is_final": symbol.is_final,
         "php_symbol_has_body": symbol.has_body,
     }
+
+    # Add Bitrix context if available
+    # We don't have the path here, but wait, symbol doesn't have path.
+    # We might need to pass path to metadata builders too if we want Bitrix info.
+    # But for now, let's just leave it if it's too complex.
+    # Wait, the strategies.py has the path!
+    
+    return metadata
 
 def build_php_residual_metadata(
     context: PhpContext,
@@ -247,12 +304,14 @@ def build_phpdoc_metadata(
         summary = summary[:500].rstrip() + "..."
 
     return {
-        "php_doc_summary": summary,
-        "php_doc_tags": sorted(tag_names),
-        "php_doc_has_deprecated": "deprecated" in tag_names,
-        "php_doc_has_param": "param" in tag_names,
-        "php_doc_has_return": "return" in tag_names,
-        "php_doc_has_throws": "throws" in tag_names,
+        "php_doc": {
+            "description": summary,
+            "tags": sorted(tag_names),
+            "has_deprecated": "deprecated" in tag_names,
+            "has_param": "param" in tag_names,
+            "has_return": "return" in tag_names,
+            "has_throws": "throws" in tag_names,
+        }
     }
 
 def build_php_prefix_config(raw_config: Any) -> PhpPrefixConfig:

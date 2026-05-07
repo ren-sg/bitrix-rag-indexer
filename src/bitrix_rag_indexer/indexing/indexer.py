@@ -201,7 +201,7 @@ class Indexer:
         with self.profiler.measure("chunk"):
             chunks = make_chunks(
                 text=text,
-                file_path=file_path,
+                file_path=Path(rel_path),
                 language=language,
                 chunking_cfg=self.chunking_cfg,
             )

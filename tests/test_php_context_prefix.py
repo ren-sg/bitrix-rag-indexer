@@ -45,16 +45,20 @@ class AreaRepository
     )
 
     assert "Namespace: App\\Sizing" in method_chunk.text_for_embedding
-    assert "Uses:\n- Bitrix\\Main\\Loader" in method_chunk.text_for_embedding
-    assert "Parent type: class AreaRepository" in method_chunk.text_for_embedding
+    assert "Class: AreaRepository" in method_chunk.text_for_embedding
     assert (
         "Symbol: public static method AreaRepository::getList"
         in method_chunk.text_for_embedding
     )
-    assert (
-        "Symbol FQN: App\\Sizing\\AreaRepository::getList"
-        in method_chunk.text_for_embedding
-    )
+    
+    # Information removed from portable prefix but preserved in metadata
+    assert "Uses:\n- Bitrix\\Main\\Loader" not in method_chunk.text_for_embedding
+    assert "Symbol FQN:" not in method_chunk.text_for_embedding
+    
+    assert "App\\Sizing" == method_chunk.metadata["php_namespace"]
+    assert "Bitrix\\Main\\Loader" in method_chunk.metadata["php_uses"]
+    assert "public" == method_chunk.metadata["php_symbol_visibility"]
+    assert method_chunk.metadata["php_symbol_is_static"] is True
 
 
 def test_php_component_prefix_contains_bitrix_component_context() -> None:
@@ -93,14 +97,12 @@ class CrmSizingAreaEditComponent extends CBitrixComponent
         if chunk.metadata.get("php_symbol_name") == "executeComponent"
     )
 
-    assert (
-        "Bitrix component: nlmk:crm.sizing.area.edit"
-        in method_chunk.text_for_embedding
-    )
-    assert (
-        "Bitrix component path: components/nlmk/crm.sizing.area.edit"
-        in method_chunk.text_for_embedding
-    )
+    assert "nlmk" == method_chunk.metadata["php_bitrix_vendor"]
+    assert "crm.sizing.area.edit" == method_chunk.metadata["php_bitrix_component"]
+    assert "components/nlmk/crm.sizing.area.edit" == method_chunk.metadata["php_bitrix_path"]
+    
+    # Verify it is NOT in the embedding text (portable format)
+    assert "Bitrix component:" not in method_chunk.text_for_embedding
 
 
 def test_php_template_prefix_contains_bitrix_component_context() -> None:
@@ -138,6 +140,10 @@ function renderKanban(): void
         if chunk.metadata.get("php_symbol_name") == "renderKanban"
     )
 
-    assert "Bitrix component: bitrix:crm.kanban" in function_chunk.text_for_embedding
-    assert "Bitrix site template: bitrix24" in function_chunk.text_for_embedding
-    assert "Bitrix component template: .default" in function_chunk.text_for_embedding
+    assert "bitrix" == function_chunk.metadata["php_bitrix_vendor"]
+    assert "crm.kanban" == function_chunk.metadata["php_bitrix_component"]
+    assert "bitrix24" == function_chunk.metadata["php_bitrix_site_template"]
+    assert ".default" == function_chunk.metadata["php_bitrix_component_template"]
+    
+    # Verify it is NOT in the embedding text (portable format)
+    assert "Bitrix component:" not in function_chunk.text_for_embedding
