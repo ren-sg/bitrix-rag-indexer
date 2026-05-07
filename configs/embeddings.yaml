@@ -8,6 +8,8 @@ dense:
   local_files_only: false
   onnx_log_severity: 3
   preload_cuda_dependencies: true
+  query_prefix: "${BITRIX_RAG_QUERY_PREFIX}"
+  document_prefix: "${BITRIX_RAG_DOCUMENT_PREFIX}"
 
 sparse:
   enabled: true
