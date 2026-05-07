@@ -7,6 +7,7 @@ exclude:
   - "**/managed_cache/**"
   - "**/stack_cache/**"
   - "**/upload/**"
+  - "**/install/**"
 
   # Dependencies
   - "**/node_modules/**"
@@ -29,3 +30,21 @@ exclude:
   - "**/*.map"
   - "**/*.map.js"
   - "**/*.lock"
+  - "**/*.bundle.js" # temporary
+
+  # Bitrix component/view noise
+  # - "**/templates/**"
+  - "**/component.php"  
+
+  # Logs / temp / backup
+  - "**/tmp/**"
+  - "**/temp/**"
+  - "**/log/**"
+  - "**/logs/**"
+  - "**/*.log"
+  - "**/*.tmp"
+  - "**/*.bak"
+  - "**/*.old"
+  - "**/*.orig"
+  - "**/*.save"
+  - "**/*~"
