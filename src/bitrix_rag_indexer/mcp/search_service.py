@@ -49,6 +49,8 @@ class BitrixCodeSearchService:
         project: str | None = None,
         lang: str | None = None,
         path: str | None = None,
+        php_namespace: str | None = None,
+        php_class: str | None = None,
         mode: str | None = None,
         include_text: bool = True,
         max_text_chars: int | None = None,
@@ -60,6 +62,8 @@ class BitrixCodeSearchService:
             project=project,
             lang=lang,
             path=path,
+            php_namespace=php_namespace,
+            php_class=php_class,
         )
         query_filter = build_qdrant_filter(filters)
 
@@ -98,6 +102,8 @@ class BitrixCodeSearchService:
                 "project": project,
                 "lang": filters.lang,
                 "path": path,
+                "php_namespace": php_namespace,
+                "php_class": php_class,
             },
             "count": len(raw_results),
             "results": [

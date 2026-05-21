@@ -28,6 +28,8 @@ class SearchFilters:
     project: str | None = None
     lang: str | None = None
     path: str | None = None
+    php_namespace: str | None = None
+    php_class: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "lang", normalize_search_lang(self.lang))
@@ -38,6 +40,8 @@ class SearchFilters:
                 self.project,
                 self.lang,
                 self.path,
+                self.php_namespace,
+                self.php_class,
             ]
         )
 
@@ -69,6 +73,22 @@ def build_qdrant_filter(filters: SearchFilters | None) -> models.Filter | None:
             models.FieldCondition(
                 key="rel_path",
                 match=models.MatchText(text=filters.path),
+            )
+        )
+
+    if filters.php_namespace:
+        must.append(
+            models.FieldCondition(
+                key="php_namespace",
+                match=models.MatchValue(value=filters.php_namespace),
+            )
+        )
+
+    if filters.php_class:
+        must.append(
+            models.FieldCondition(
+                key="php_nearest_type_name",
+                match=models.MatchValue(value=filters.php_class),
             )
         )
 

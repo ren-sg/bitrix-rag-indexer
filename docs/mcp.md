@@ -1,170 +1,111 @@
-# Bitrix RAG MCP — быстрый старт
+# Bitrix RAG MCP — Руководство
 
-Минимальная инструкция: запуск, конфигурация, проверка, наблюдение.
+Встроенный сервер Model Context Protocol (MCP) обеспечивает бесшовную интеграцию вашей кодовой базы на Bitrix с современными AI-ассистентами (Claude Code, Cursor, Windsurf, Aider, Cherry Studio и др.).
 
 ---
 
-## 1. Запуск
+## 🛠 Доступные инструменты (MCP Tools)
 
-### 1.1 Поднять Qdrant
+Для решения частой проблемы "переполнения контекста" (context flooding) у AI-моделей, сервер реализует паттерн **Multi-Tool Architecture**. Он предоставляет два разных инструмента, чтобы и человек, и агент могли выбирать оптимальный способ работы с кодовой базой.
+
+### 1. `bitrix_code_locator` (Инструмент разведки и навигации)
+**Назначение**: Широкий поиск по проекту для понимания архитектуры и нахождения путей к файлам.
+* **Особенность**: Возвращает **только метаданные** (абсолютные пути, номера строк, сигнатуры методов), без огромных кусков исходного кода. Очень экономит токены (token-efficient).
+* **Когда использовать агенту**: При вопросах вида *"Найди все места, где вызывается `BX.ajax`"*, *"Где лежит логика оформления заказа?"*, *"Покажи структуру модуля `im`"*.
+* **Пример работы**:
+  Агент запрашивает: `bitrix_code_locator(query="класс корзины", limit=10)`
+  Получает список путей (например, `/app/local/modules/shop/lib/basket.php`, строки 150-300). После этого агент может использовать свой собственный инструмент (например, `read_file` в Claude Code), чтобы прочитать нужные строки.
+
+### 2. `bitrix_semantic_search` (Инструмент точных решений)
+**Назначение**: Получение конкретных реализаций и готового кода.
+* **Особенность**: Возвращает **полный текст** найденных фрагментов кода. По умолчанию лимит снижен, чтобы выдавать только самые релевантные куски.
+* **Когда использовать агенту**: При вопросах вида *"Покажи реализацию метода `getRows`"*, *"Как в этом проекте сохраняются пользователи?"*, *"Найди ошибку в функции `processPayment`"*.
+* **Пример работы**:
+  Агент запрашивает: `bitrix_semantic_search(query="реализация getRows", limit=2)`
+  Сразу получает текст кода метода и пишет ответ пользователю.
+
+### 3. Доступные фильтры для агентов
+Оба инструмента (`bitrix_code_locator` и `bitrix_semantic_search`) поддерживают мощные фильтры, которые агент может комбинировать:
+* `limit` (int): Максимальное количество результатов.
+* `lang` (str): Язык программирования (по умолчанию `"php"`, но можно передать `"javascript"`, `"vue"` и т.д.).
+* `project` (str): Поиск строго по названию проекта (например, `"example_project"`). По умолчанию ищет по всем проектам.
+* `path` (str): Поиск по подстроке пути к файлу (например, `"local/components"`).
+* `php_namespace` (str): Строгий поиск внутри PHP namespace (например, `"Bitrix\Sale"`). Работает благодаря встроенному парсеру Tree-Sitter.
+* `php_class` (str): Строгий поиск только внутри конкретного PHP класса или интерфейса (например, `"Basket"`). Полезно для поиска конкретных методов внутри гигантских классов.
+
+---
+
+## 🚀 1. Запуск сервера
+
+MCP сервер запускается в Docker-окружении вместе с базой Qdrant.
 
 ```bash
+# Поднимаем Qdrant (если еще не поднят)
 docker compose up -d qdrant
-```
 
-### 1.2 Запустить MCP сервер
-
-```bash
+# Запускаем MCP сервер
 docker compose up -d bitrix-rag-mcp
 ```
 
-> Для смены конфига используем переменную окружения (см. ниже).
+Для проверки здоровья сервера (Healthcheck):
+```bash
+curl http://localhost:8000/healthz
+# Ожидаемый ответ: {"status": "ok", "service": "bitrix-rag-indexer-mcp"}
+```
 
 ---
 
-## 2. Конфигурация
+## ⚙️ 2. Конфигурация и кэш
 
-### 2.1 Основная переменная
-
-В `.env`:
-
+### 2.1 Переменные окружения
+Основной путь конфигурации задается в `.env`. По умолчанию это директория `configs/`:
 ```env
-BITRIX_RAG_CONFIG_DIR_HOST=.indexer/experiments/multilingual-e5-large/configs
+BITRIX_RAG_CONFIG_DIR_HOST=./configs
 ```
-
-И перезапуск:
-
+*Если вы изменили `.env`, необходимо пересоздать контейнер:*
 ```bash
 docker compose up -d --force-recreate bitrix-rag-mcp
 ```
 
----
-
-### 2.2 Проверка, что конфиг применился
-
-```bash
-docker exec -i bitrix-rag-mcp python - <<'PY'
-from pathlib import Path
-print(Path("/app/configs/embeddings.yaml").read_text())
-PY
-```
-
-Ожидаемо:
-
-```yaml
-model: intfloat/multilingual-e5-large
-```
-
----
-
-### 2.3 Кеш embeddings
-
-```yaml
-cache_path: .indexer/cache/embeddings.sqlite
-```
-
-Важно:
-
+### 2.2 Проблема с Read-Only БД (Кэш)
+Для ускорения работы используется SQLite кэш эмбеддингов. Если вы получаете ошибку `OperationalError: attempt to write a readonly database`, обновите права локально:
 ```bash
 sudo chown -R $USER:$USER .indexer/cache
 ```
 
-Иначе будет:
+---
 
+## 🤖 3. Настройка AI-клиента (например, Cherry Studio)
+
+В большинстве умных агентов (Claude Code, Cursor) MCP инструменты работают из коробки благодаря мощным описаниям (docstrings) внутри самого кода.
+
+Если вы используете клиенты, требующие системного промпта, добавьте следующие правила для модели:
 ```text
-OperationalError: attempt to write a readonly database
+- Всегда используй MCP инструменты для поиска по кодовой базе.
+- Если нужно найти путь или архитектуру — используй bitrix_code_locator.
+- Если нужна реализация метода — используй bitrix_semantic_search с limit=2.
+- Не пытайся генерировать SQL-запросы Bitrix без предварительного поиска примеров.
 ```
 
 ---
 
-## 3. Проверка работы
+## 📋 4. Наблюдение и отладка
 
-### 3.1 Healthcheck
-
-```bash
-curl http://localhost:8000/healthz
-```
-
-Ожидаемо:
-
-```text
-200 OK
-```
-
----
-
-### 3.2 Прямой поиск (локально)
-
-```bash
-uv run bitrix-rag search "getRows" \
-  --source project_local \
-  --mode qdrant-hybrid \
-  --limit 5 \
-  --config-dir .indexer/experiments/multilingual-e5-large/configs
-```
-
----
-
-### 3.3 Проверка из контейнера
-
+**Чтение логов сервера:**
 ```bash
 docker logs -f bitrix-rag-mcp
 ```
 
-Должны быть:
-
-```text
-GET /healthz 200
-search requests
-```
-
----
-
-## 4. Использование в MCP (например, Cherry Studio)
-
-Минимальные правила для модели:
-
-```text
-- всегда использовать MCP для поиска кода
-- если нет результатов — повторить поиск
-- не использовать SQL без найденного примера
-- использовать найденные чанки как основу
-```
-
----
-
-## 5. Наблюдение
-
-### 5.1 Логи
-
-```bash
-docker logs -f bitrix-rag-mcp
-```
-
----
-
-### 5.2 Проверка подключённого конфига
-
+**Проверка подключенных томов конфигурации (внутри Docker):**
 ```bash
 docker inspect bitrix-rag-mcp --format '{{range .Mounts}}{{println .Source "->" .Destination}}{{end}}'
 ```
 
-Ожидаемо:
-
-```text
-.indexer/.../configs -> /app/configs
-.indexer/cache -> /app/.indexer/cache
-```
-
----
-
-### 5.3 Проверка модели (внутри контейнера)
-
+**Отладка выбора модели внутри контейнера:**
 ```bash
 docker exec -i bitrix-rag-mcp python - <<'PY'
 from pathlib import Path
 import yaml
-
 data = yaml.safe_load(Path("/app/configs/embeddings.yaml").read_text())
 print(data["dense"]["model"])
 PY
@@ -172,55 +113,7 @@ PY
 
 ---
 
-## 6. Частые проблемы
-
-### ❌ readonly sqlite
-
-```bash
-sudo chown -R $USER:$USER .indexer/cache
-```
-
----
-
-### ❌ конфиг не применяется
-
-```bash
-docker compose up -d --force-recreate bitrix-rag-mcp
-```
-
----
-
-### ❌ MCP "не ищет"
-
-Проверить:
-
-```text
-- MCP реально вызывается (не "предположим")
-- limit >= 5
-- source указан
-```
-
----
-
-### ❌ таймауты
-
-```text
-- увеличить timeout в клиенте (Cherry)
-- проверить, что Qdrant жив
-```
-
----
-
-## 7. Рекомендуемый профиль
-
-```text
-model: intfloat/multilingual-e5-large
-mode: qdrant-hybrid
-```
-
----
-
-## 8. Минимальный чек перед работой
+## 🧹 5. Минимальный чек-лист перед работой
 
 ```bash
 git status
@@ -228,9 +121,3 @@ uv run pytest -q
 docker compose ps
 curl http://localhost:8000/healthz
 ```
-
----
-
-## Готово
-
-MCP сервер поднят и готов к использованию.
