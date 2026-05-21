@@ -6,7 +6,7 @@ services:
       - "6333:6333"
       - "6334:6334"
     volumes:
-      - qdrant_storage:/qdrant/storage
+      - ./.indexer/qdrant_storage:/qdrant/storage
     restart: unless-stopped
 
   bitrix-rag-mcp:
@@ -43,6 +43,3 @@ services:
       interval: 30s
       timeout: 5s
       retries: 5
-
-volumes:
-  qdrant_storage:
