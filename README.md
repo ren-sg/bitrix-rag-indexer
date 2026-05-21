@@ -103,3 +103,10 @@ uv run bitrix-rag eval --file eval/queries.my_project.yaml --mode qdrant-hybrid
 # Короткий summary
 uv run bitrix-rag eval --mode qdrant-hybrid | grep 'Summary'
 ```
+
+# Запуск cuda
+```bash
+source .venv-cuda/bin/activate
+source scripts/env_cuda.sh
+bitrix-rag index --project my_project --dry-run
+```

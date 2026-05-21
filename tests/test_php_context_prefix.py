@@ -74,7 +74,7 @@ class CrmSizingAreaEditComponent extends CBitrixComponent
 
     chunks = chunk_php(
         text=source,
-        path=Path("components/nlmk/crm.sizing.area.edit/class.php"),
+        path=Path("components/vendor/crm.sizing.area.edit/class.php"),
         language="php",
         config={
             "strategy": "tree-sitter",
@@ -97,9 +97,9 @@ class CrmSizingAreaEditComponent extends CBitrixComponent
         if chunk.metadata.get("php_symbol_name") == "executeComponent"
     )
 
-    assert "nlmk" == method_chunk.metadata["php_bitrix_vendor"]
+    assert "vendor" == method_chunk.metadata["php_bitrix_vendor"]
     assert "crm.sizing.area.edit" == method_chunk.metadata["php_bitrix_component"]
-    assert "components/nlmk/crm.sizing.area.edit" == method_chunk.metadata["php_bitrix_path"]
+    assert "components/vendor/crm.sizing.area.edit" == method_chunk.metadata["php_bitrix_path"]
     
     # Verify it is NOT in the embedding text (portable format)
     assert "Bitrix component:" not in method_chunk.text_for_embedding
