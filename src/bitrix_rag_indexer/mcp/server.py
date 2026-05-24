@@ -26,11 +26,6 @@ _FILTER_DOCS = """
     - limit: Max number of results.
     - lang: Programming language filter (default "php", e.g. "javascript", "vue", "markdown").
     - project: Logical project name (e.g. "bitrix_modules"). Omit to search all projects.
-    - path: Substring filter on stored rel_path in the Qdrant index.
-      This matches the indexed payload, NOT necessarily the rel_path shown in results
-      (display paths may include a project prefix such as "bitrix/modules/").
-      For bitrix_modules, prefer "disk" or "bitrix/modules/disk", not "modules/disk".
-      Start without path, then narrow down once you know the directory.
     - php_namespace: Exact PHP namespace (e.g. "Bitrix\\Sale").
     - php_class: Exact PHP class or interface name (e.g. "Basket").
     - mode: "qdrant-hybrid" (default), "qdrant-sparse", or "dense".
@@ -45,7 +40,6 @@ def bitrix_semantic_search(
     limit: int = 3,
     project: str = "",
     lang: str = "php",
-    path: str = "",
     php_namespace: str = "",
     php_class: str = "",
     mode: str = "",
@@ -68,7 +62,6 @@ def bitrix_semantic_search(
         limit=limit,
         project=project,
         lang=lang,
-        path=path,
         php_namespace=php_namespace,
         php_class=php_class,
         mode=mode or None,
@@ -82,7 +75,6 @@ def bitrix_code_locator(
     limit: int = 15,
     project: str = "",
     lang: str = "php",
-    path: str = "",
     php_namespace: str = "",
     php_class: str = "",
     mode: str = "",
@@ -106,7 +98,6 @@ def bitrix_code_locator(
         limit=limit,
         project=project,
         lang=lang,
-        path=path,
         php_namespace=php_namespace,
         php_class=php_class,
         mode=mode or None,
