@@ -46,6 +46,33 @@ class SearchFilters:
         )
 
 
+def optional_filter_value(value: str | None) -> str | None:
+    """Treat blank strings as unset filter values."""
+    if value is None:
+        return None
+
+    stripped = value.strip()
+    return stripped or None
+
+
+def format_applied_filters(filters: SearchFilters) -> dict[str, str]:
+    """Return only filters that are actively applied to the search."""
+    applied: dict[str, str] = {}
+
+    if filters.project:
+        applied["project"] = filters.project
+    if filters.lang:
+        applied["lang"] = filters.lang
+    if filters.path:
+        applied["path"] = filters.path
+    if filters.php_namespace:
+        applied["php_namespace"] = filters.php_namespace
+    if filters.php_class:
+        applied["php_class"] = filters.php_class
+
+    return applied
+
+
 def build_qdrant_filter(filters: SearchFilters | None) -> models.Filter | None:
     if filters is None or filters.is_empty():
         return None

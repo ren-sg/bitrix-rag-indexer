@@ -5,7 +5,12 @@ from typing import Any
 from bitrix_rag_indexer.config.loader import load_yaml
 from bitrix_rag_indexer.embeddings.dense import DenseEmbedder
 from bitrix_rag_indexer.mcp.settings import McpServerSettings
-from bitrix_rag_indexer.search.filters import SearchFilters, build_qdrant_filter
+from bitrix_rag_indexer.search.filters import (
+    SearchFilters,
+    build_qdrant_filter,
+    format_applied_filters,
+    optional_filter_value,
+)
 from bitrix_rag_indexer.search.result_middleware import (
     ProjectPathRegistry,
     SearchResultPathMiddleware,
@@ -68,11 +73,11 @@ class BitrixCodeSearchService:
         normalized_mode = self._normalize_mode(mode)
 
         filters = SearchFilters(
-            project=project,
-            lang=lang,
-            path=path,
-            php_namespace=php_namespace,
-            php_class=php_class,
+            project=optional_filter_value(project),
+            lang=optional_filter_value(lang),
+            path=optional_filter_value(path),
+            php_namespace=optional_filter_value(php_namespace),
+            php_class=optional_filter_value(php_class),
         )
         query_filter = build_qdrant_filter(filters)
 
@@ -107,13 +112,7 @@ class BitrixCodeSearchService:
             "query": query,
             "mode": normalized_mode,
             "limit": normalized_limit,
-            "filters": {
-                "project": project,
-                "lang": filters.lang,
-                "path": path,
-                "php_namespace": php_namespace,
-                "php_class": php_class,
-            },
+            "applied_filters": format_applied_filters(filters),
             "count": len(raw_results),
             "results": [
                 self._format_result(
