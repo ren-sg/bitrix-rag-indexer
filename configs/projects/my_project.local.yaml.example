@@ -1,0 +1,26 @@
+# Copy to my_project.local.yaml and set root via .env (gitignored).
+#
+# Example:
+#   MY_PROJECT_ROOT=/home/user/projects/my_project
+#
+# Then in my_project.local.yaml:
+#   project: my_project
+#   root: ${MY_PROJECT_ROOT}
+
+project: my_project
+root: ${MY_PROJECT_ROOT}
+path: local
+
+# Temporary migration flag: prepend path to rel_path in search results
+# without re-indexing. Remove after re-indexing with correct config.
+# force_rel_path: true
+
+include:
+  - "**/*.php"
+  - "**/*.js"
+  - "**/*.ts"
+  - "**/*.vue"
+  - "**/*.md"
+
+exclude_from:
+  - "excludes.bitrix.yaml"

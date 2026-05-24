@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from bitrix_rag_indexer.config.project import ProjectConfig, load_project_config
+from bitrix_rag_indexer.config.project import ProjectConfig, compute_rel_path, load_project_config
 from bitrix_rag_indexer.metadata.payload import build_payload
 from bitrix_rag_indexer.search.filters import SearchFilters, build_qdrant_filter
 from bitrix_rag_indexer.state.hashes import stable_chunk_id
@@ -155,6 +155,7 @@ class TestPayloadAndIdentity:
             scan_root=(root / "local").resolve(),
             include=["**/*.php"],
             exclude=[],
+            path="local",
         )
 
     def test_payload_has_project_field(self, tmp_path: Path) -> None:
@@ -189,11 +190,31 @@ class TestPayloadAndIdentity:
 
         payload = build_payload(project=project, file_path=file_path, chunk=_FakeChunk(), language="php")
 
-        # rel_path is relative to project.root (not scan_root)
-        expected = file_path.resolve().relative_to(project.root).as_posix()
+        # rel_path is relative to project.root and includes path prefix
+        expected = compute_rel_path(project, file_path)
         assert payload["rel_path"] == expected
+        assert payload["rel_path"] == "local/components/Bar.php"
         # Must NOT start with '/'
         assert not payload["rel_path"].startswith("/")
+
+    def test_compute_rel_path_includes_path_prefix(self, tmp_path: Path) -> None:
+        root = tmp_path / "www"
+        scan_root = root / "bitrix" / "modules"
+        scan_root.mkdir(parents=True)
+        file_path = scan_root / "sale" / "lib" / "Foo.php"
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.touch()
+
+        project = ProjectConfig(
+            project="bitrix_modules",
+            root=root.resolve(),
+            scan_root=scan_root.resolve(),
+            include=["**/*.php"],
+            exclude=[],
+            path="bitrix/modules",
+        )
+
+        assert compute_rel_path(project, file_path) == "bitrix/modules/sale/lib/Foo.php"
 
     def test_chunk_ids_differ_for_same_rel_path_in_different_projects(self) -> None:
         rel_path = "local/components/Foo.php"

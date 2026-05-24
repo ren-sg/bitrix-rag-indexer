@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Any
 
-from bitrix_rag_indexer.config.project import ProjectConfig
+from bitrix_rag_indexer.config.project import ProjectConfig, compute_rel_path
 from bitrix_rag_indexer.state.hashes import sha256_text
 
 
@@ -13,10 +13,10 @@ def build_payload(
 ) -> dict[str, Any]:
     """Build the minimal Qdrant payload for a chunk.
 
-    ``rel_path`` is relative to ``project.root`` so MCP can reconstruct
-    the absolute path as ``project.root / rel_path``.
+    ``rel_path`` is relative to ``project.root``; when ``project.path`` is set
+    the prefix is included (e.g. ``bitrix/modules/sale/lib/foo.php``).
     """
-    rel_path = file_path.resolve().relative_to(project.root).as_posix()
+    rel_path = compute_rel_path(project, file_path)
 
     payload: dict[str, Any] = {
         "project": project.project,

@@ -5,6 +5,9 @@ current_prompt.md
 eval/queries.*.local.yaml
 eval/queries.mvp.yaml
 
+# Machine-specific project configs (real paths via .env)
+configs/projects/*.local.yaml
+
 # Cache
 .pytest_cache/
 .ruff_cache/

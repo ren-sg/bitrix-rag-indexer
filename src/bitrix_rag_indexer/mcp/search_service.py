@@ -6,6 +6,10 @@ from bitrix_rag_indexer.config.loader import load_yaml
 from bitrix_rag_indexer.embeddings.dense import DenseEmbedder
 from bitrix_rag_indexer.mcp.settings import McpServerSettings
 from bitrix_rag_indexer.search.filters import SearchFilters, build_qdrant_filter
+from bitrix_rag_indexer.search.result_middleware import (
+    ProjectPathRegistry,
+    SearchResultPathMiddleware,
+)
 from bitrix_rag_indexer.storage.qdrant_client import QdrantStore
 
 
@@ -38,6 +42,11 @@ class BitrixCodeSearchService:
             sparse_config=self.embeddings_config.get("sparse"),
         )
         self.store.ensure_payload_indexes()
+
+        self._path_middleware = SearchResultPathMiddleware(
+            ProjectPathRegistry(settings.config_dir),
+            settings.use_abs_path,
+        )
 
         self._warmup()
 
@@ -178,7 +187,7 @@ class BitrixCodeSearchService:
         if include_text:
             result["text"] = self._truncate_text(text, max_text_chars)
 
-        return result
+        return self._path_middleware.apply(result)
 
     def _truncate_text(self, text: str, max_chars: int) -> str:
         if len(text) <= max_chars:

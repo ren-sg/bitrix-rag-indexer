@@ -1,0 +1,14 @@
+project: bitrix_modules
+root: ${BITRIX_MODULES_ROOT}
+path: bitrix/modules
+force_rel_path: true  # temporary migration flag — remove after re-indexing
+
+include:
+  - "**/*.php"
+  - "**/*.js"
+  - "**/*.ts"
+  - "**/*.vue"
+  - "**/*.md"
+
+exclude_from:
+  - "excludes.bitrix.yaml"

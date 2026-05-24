@@ -5,6 +5,7 @@ from bitrix_rag_indexer.config.loader import load_yaml
 from bitrix_rag_indexer.embeddings.dense import DenseEmbedder
 from bitrix_rag_indexer.search.filters import SearchFilters, build_qdrant_filter
 from bitrix_rag_indexer.search.hybrid import rrf_fuse
+from bitrix_rag_indexer.search.result_middleware import SearchResultPathMiddleware
 from bitrix_rag_indexer.search.lexical import LexicalSearchIndex
 from bitrix_rag_indexer.storage.qdrant_client import QdrantStore
 
@@ -36,59 +37,70 @@ def search_query(
     if mode not in {"dense", "lexical", "hybrid", "qdrant-sparse", "qdrant-hybrid"}:
         raise ValueError(f"Unsupported search mode: {mode}")
 
+    query_filter = build_qdrant_filter(filters)
+
     if mode == "lexical":
-        return search_lexical_only(
+        results = search_lexical_only(
             query=query,
             limit=limit,
             filters=filters,
             store=store,
         )
-
-    query_filter = build_qdrant_filter(filters)
-
-    if mode == "qdrant-sparse":
-        return store.search_sparse(
+    elif mode == "qdrant-sparse":
+        results = store.search_sparse(
             query_text=query,
             limit=limit,
             query_filter=query_filter,
         )
+    else:
+        embedder = DenseEmbedder(embeddings_cfg["dense"])
+        query_vector = embedder.embed_query(query)
 
-    embedder = DenseEmbedder(embeddings_cfg["dense"])
-    query_vector = embedder.embed_query(query)
+        if mode == "qdrant-hybrid":
+            results = store.search_qdrant_hybrid(
+                query_text=query,
+                query_vector=query_vector,
+                limit=limit,
+                dense_limit=dense_candidates,
+                sparse_limit=lexical_candidates,
+                query_filter=query_filter,
+            )
+        else:
+            dense_results = store.search(
+                query_vector=query_vector,
+                limit=limit if mode == "dense" else dense_candidates,
+                score_threshold=score_threshold,
+                query_filter=query_filter,
+            )
 
-    if mode == "qdrant-hybrid":
-        return store.search_qdrant_hybrid(
-            query_text=query,
-            query_vector=query_vector,
-            limit=limit,
-            dense_limit=dense_candidates,
-            sparse_limit=lexical_candidates,
-            query_filter=query_filter,
-        )
+            if mode == "dense":
+                results = dense_results
+            else:
+                lexical_results = search_lexical_only(
+                    query=query,
+                    limit=lexical_candidates,
+                    filters=filters,
+                    store=store,
+                )
+                results = rrf_fuse(
+                    dense_results=dense_results,
+                    lexical_results=lexical_results,
+                    limit=limit,
+                    k=rrf_k,
+                )
 
-    dense_results = store.search(
-        query_vector=query_vector,
-        limit=limit if mode == "dense" else dense_candidates,
-        score_threshold=score_threshold,
-        query_filter=query_filter,
-    )
+    return _apply_path_middleware(results, config_dir)
 
-    if mode == "dense":
-        return dense_results
 
-    lexical_results = search_lexical_only(
-        query=query,
-        limit=lexical_candidates,
-        filters=filters,
-        store=store,
-    )
+def _apply_path_middleware(
+    results: list[dict[str, Any]],
+    config_dir: Path,
+) -> list[dict[str, Any]]:
+    if not results:
+        return results
 
-    return rrf_fuse(
-        dense_results=dense_results,
-        lexical_results=lexical_results,
-        limit=limit,
-        k=rrf_k,
-    )
+    middleware = SearchResultPathMiddleware.from_env(config_dir)
+    return [middleware.apply(item) for item in results]
 
 
 def search_lexical_only(

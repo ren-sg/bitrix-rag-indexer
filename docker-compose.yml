@@ -26,6 +26,7 @@ services:
       BITRIX_RAG_DEFAULT_LIMIT: "5"
       BITRIX_RAG_MAX_LIMIT: "20"
       BITRIX_RAG_MAX_TEXT_CHARS: "3000"
+      USE_ABS_PATH: "${USE_ABS_PATH:-false}"
     ports:
       - "8000:8000"
     volumes:

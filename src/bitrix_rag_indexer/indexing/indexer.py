@@ -16,7 +16,7 @@ from bitrix_rag_indexer.chunking.markdown_chunker import chunk_markdown
 from bitrix_rag_indexer.chunking.php import chunk_php
 from bitrix_rag_indexer.chunking.text_chunker import chunk_text
 from bitrix_rag_indexer.config.loader import load_yaml
-from bitrix_rag_indexer.config.project import ProjectConfig, get_project, load_all_projects
+from bitrix_rag_indexer.config.project import ProjectConfig, compute_rel_path, get_project, load_all_projects
 from bitrix_rag_indexer.discovery.scanner import scan_project
 from bitrix_rag_indexer.embeddings.dense import DenseEmbedder
 from bitrix_rag_indexer.embeddings.sparse import SparseEmbedder
@@ -175,7 +175,7 @@ class Indexer:
         with self.profiler.measure("hash"):
             file_hash = sha256_text(text)
 
-        rel_path = file_path.resolve().relative_to(project.root).as_posix()
+        rel_path = compute_rel_path(project, file_path)
 
         with self.profiler.measure("manifest_check"):
             unchanged = (
@@ -284,8 +284,7 @@ class Indexer:
 
             with self.profiler.measure("build_payload"):
                 for i, ((job, chunk), vector) in enumerate(zip(chunk_batch, vectors, strict=True)):
-                    rel_path = chunk.chunk_id  # recomputed below via stable_chunk_id
-                    rel_path = job.file_path.resolve().relative_to(job.project.root).as_posix()
+                    rel_path = compute_rel_path(job.project, job.file_path)
 
                     chunk_id = stable_chunk_id(
                         project=job.project.project,
@@ -380,7 +379,7 @@ def build_chunk_fts_records(
     chunks: list[Any],
     language: str,
 ) -> list[dict[str, Any]]:
-    rel_path = file_path.resolve().relative_to(project.root).as_posix()
+    rel_path = compute_rel_path(project, file_path)
 
     return [
         {

@@ -22,9 +22,10 @@ def format_search_result(item: dict[str, Any], debug: bool = False) -> Panel:
     payload = item.get("payload") or {}
 
     score = item.get("score", 0.0)
-    project = payload.get("project", "?")
+    project = item.get("project") or payload.get("project", "?")
     language = payload.get("language", "?")
-    rel_path = payload.get("rel_path") or item.get("path") or "?"
+    rel_path = item.get("rel_path") or payload.get("rel_path") or item.get("path") or "?"
+    abs_path = item.get("abs_path") or payload.get("abs_path")
     start_line = payload.get("start_line", "?")
     end_line = payload.get("end_line", "?")
 
@@ -34,6 +35,8 @@ def format_search_result(item: dict[str, Any], debug: bool = False) -> Panel:
         f"{language} | "
         f"{rel_path}:{start_line}-{end_line}"
     )
+    if abs_path:
+        title = f"{title} | {abs_path}"
 
     text = item.get("text") or payload.get("text") or ""
     text = text[:1200]
@@ -56,6 +59,10 @@ def format_debug_info(item: dict[str, Any]) -> str:
     item_id = item.get("id")
     if item_id is not None:
         lines.append(f"id: {item_id}")
+
+    abs_path = item.get("abs_path") or (item.get("payload") or {}).get("abs_path")
+    if abs_path:
+        lines.append(f"abs_path: {abs_path}")
 
     hybrid_score = item.get("hybrid_score")
     if hybrid_score is not None:

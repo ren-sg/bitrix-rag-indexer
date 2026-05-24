@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +25,20 @@ class ProjectConfig:
 
     exclude: list[str]
     """Merged glob patterns for files to exclude (from exclude + exclude_from)."""
+
+    path: str | None = None
+    """Optional sub-directory scanned within root."""
+
+    force_rel_path: bool = False
+    """When true, prepend path to rel_path at query time (migration for old payloads)."""
+
+
+def compute_rel_path(project: ProjectConfig, file_path: Path) -> str:
+    """Return rel_path relative to project.root, including path prefix when set."""
+    resolved = file_path.resolve()
+    if project.path:
+        return (Path(project.path) / resolved.relative_to(project.scan_root)).as_posix()
+    return resolved.relative_to(project.root).as_posix()
 
 
 def load_project_config(yaml_path: Path, config_dir: Path | None = None) -> ProjectConfig:
@@ -51,8 +65,12 @@ def load_project_config(yaml_path: Path, config_dir: Path | None = None) -> Proj
     sub_path = data.get("path", "")
     if sub_path:
         scan_root = (root / sub_path).resolve()
+        path: str | None = sub_path
     else:
         scan_root = root
+        path = None
+
+    force_rel_path = bool(data.get("force_rel_path", False))
 
     include: list[str] = data.get("include") or ["**/*"]
     exclude: list[str] = list(data.get("exclude") or [])
@@ -74,6 +92,8 @@ def load_project_config(yaml_path: Path, config_dir: Path | None = None) -> Proj
         scan_root=scan_root,
         include=include,
         exclude=exclude,
+        path=path,
+        force_rel_path=force_rel_path,
     )
 
 

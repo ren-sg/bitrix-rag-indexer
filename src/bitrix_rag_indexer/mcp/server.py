@@ -33,7 +33,7 @@ def bitrix_semantic_search(
     """Search for ACTUAL CODE implementations or semantic queries.
 
     BEST TOOL for fetching exact code snippets to solve problems.
-    Returns the FULL code text. 
+    Returns the FULL code text, plus `rel_path` and (when `USE_ABS_PATH=true`) `abs_path`.
     IMPORTANT: Keep `limit` low (e.g., 2-4) to avoid flooding your context window!
     If you need to broadly explore many files or find where a method is used, use `bitrix_code_locator` instead.
     
@@ -44,7 +44,7 @@ def bitrix_semantic_search(
     Optional Filters:
     - limit: Max number of results (default 3). Keep it low to save context!
     - lang: Filter by programming language (default "php", e.g., "javascript", "vue", "markdown").
-    - path: Filter by file path substring (e.g., "local/components", "modules/sale").
+    - path: Filter by rel_path substring (e.g., "local/components", "bitrix/modules/sale").
     - project: Filter by project name.
     - php_namespace: Filter by exact PHP namespace (e.g., "Bitrix\\Sale").
     - php_class: Filter by exact PHP class or interface name (e.g., "Basket").
@@ -80,7 +80,8 @@ def bitrix_code_locator(
 
     BEST TOOL for exploration and navigation! Use this to find WHICH files and EXACTLY WHAT LINES 
     contain the relevant logic, classes, or functions. Highly token-efficient.
-    It returns absolute file paths, line numbers, and symbol metadata WITHOUT the massive code body.
+    Returns `rel_path` (project-relative), and when `USE_ABS_PATH=true` also
+    `abs_path` (absolute filesystem path), plus line numbers and symbol metadata WITHOUT the code body.
     Once you find the relevant lines, use your file reading tools to view the code.
     
     Use:
@@ -90,7 +91,7 @@ def bitrix_code_locator(
     Optional Filters:
     - limit: Max number of results (default 15).
     - lang: Filter by programming language (default "php", e.g., "javascript", "vue", "markdown").
-    - path: Filter by file path substring (e.g., "local/components", "modules/sale").
+    - path: Filter by rel_path substring (e.g., "local/components", "bitrix/modules/sale").
     - project: Filter by project name.
     - php_namespace: Filter by exact PHP namespace (e.g., "Bitrix\\Sale").
     - php_class: Filter by exact PHP class or interface name (e.g., "Basket").

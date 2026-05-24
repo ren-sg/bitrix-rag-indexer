@@ -10,15 +10,15 @@
 
 ### 1. `bitrix_code_locator` (Инструмент разведки и навигации)
 **Назначение**: Широкий поиск по проекту для понимания архитектуры и нахождения путей к файлам.
-* **Особенность**: Возвращает **только метаданные** (абсолютные пути, номера строк, сигнатуры методов), без огромных кусков исходного кода. Очень экономит токены (token-efficient).
+* **Особенность**: Возвращает **только метаданные** (пути, номера строк, сигнатуры методов), без огромных кусков исходного кода. Очень экономит токены (token-efficient). При `USE_ABS_PATH=true` добавляет `abs_path` рядом с `rel_path`.
 * **Когда использовать агенту**: При вопросах вида *"Найди все места, где вызывается `BX.ajax`"*, *"Где лежит логика оформления заказа?"*, *"Покажи структуру модуля `im`"*.
 * **Пример работы**:
   Агент запрашивает: `bitrix_code_locator(query="класс корзины", limit=10)`
-  Получает список путей (например, `/app/local/modules/shop/lib/basket.php`, строки 150-300). После этого агент может использовать свой собственный инструмент (например, `read_file` в Claude Code), чтобы прочитать нужные строки.
+  Получает список путей (например, `rel_path: bitrix/modules/sale/lib/discountcouponsmanagerbase.php`, `abs_path: /home/user/www/bitrix/modules/sale/lib/discountcouponsmanagerbase.php`, строки 150-300). После этого агент может использовать свой собственный инструмент (например, `read_file` в Claude Code), чтобы прочитать нужные строки.
 
 ### 2. `bitrix_semantic_search` (Инструмент точных решений)
 **Назначение**: Получение конкретных реализаций и готового кода.
-* **Особенность**: Возвращает **полный текст** найденных фрагментов кода. По умолчанию лимит снижен, чтобы выдавать только самые релевантные куски.
+* **Особенность**: Возвращает **полный текст** найденных фрагментов кода, а также `rel_path` и (при `USE_ABS_PATH=true`) `abs_path`. По умолчанию лимит снижен, чтобы выдавать только самые релевантные куски.
 * **Когда использовать агенту**: При вопросах вида *"Покажи реализацию метода `getRows`"*, *"Как в этом проекте сохраняются пользователи?"*, *"Найди ошибку в функции `processPayment`"*.
 * **Пример работы**:
   Агент запрашивает: `bitrix_semantic_search(query="реализация getRows", limit=2)`
@@ -29,9 +29,19 @@
 * `limit` (int): Максимальное количество результатов.
 * `lang` (str): Язык программирования (по умолчанию `"php"`, но можно передать `"javascript"`, `"vue"` и т.д.).
 * `project` (str): Поиск строго по названию проекта (например, `"example_project"`). По умолчанию ищет по всем проектам.
-* `path` (str): Поиск по подстроке пути к файлу (например, `"local/components"`).
+* `path` (str): Поиск по подстроке `rel_path` в payload (например, `"local/components"`, `"bitrix/modules/sale"`).
 * `php_namespace` (str): Строгий поиск внутри PHP namespace (например, `"Bitrix\Sale"`). Работает благодаря встроенному парсеру Tree-Sitter.
 * `php_class` (str): Строгий поиск только внутри конкретного PHP класса или интерфейса (например, `"Basket"`). Полезно для поиска конкретных методов внутри гигантских классов.
+
+### 4. Поля ответа поиска
+
+Каждый результат содержит:
+* `rel_path` — путь относительно `project.root` (с префиксом `path`, если задан в конфиге проекта)
+* `abs_path` — абсолютный путь на диске (только при `USE_ABS_PATH=true`)
+* `project`, `language`, `start_line`, `end_line` — метаданные чанка
+* `path` — legacy alias для `rel_path`
+
+`bitrix_code_locator` дополнительно возвращает `signature` и `symbol` вместо полного текста кода.
 
 ---
 
@@ -61,7 +71,29 @@ curl http://localhost:8000/healthz
 Основной путь конфигурации задается в `.env`. По умолчанию это директория `configs/`:
 ```env
 BITRIX_RAG_CONFIG_DIR_HOST=./configs
+BITRIX_MODULES_ROOT=/home/user/www/
+USE_ABS_PATH=true
 ```
+
+`USE_ABS_PATH=true` включает поле `abs_path` в результатах поиска (MCP и CLI). Абсолютный путь вычисляется из `project.root` и конфигурации проекта:
+- при `force_rel_path: true` (миграция старых данных): `project.root / path / stored_rel_path`
+- иначе: `project.root / rel_path`
+
+CLI-поиск (`uv run bitrix-rag search`) использует ту же логику через общий middleware.
+
+Шаблон локального конфига проекта: `configs/projects/my_project.local.yaml.example`.
+
+#### Временная миграция: `force_rel_path`
+
+Если данные были проиндексированы с неправильным `root` (без префикса `path` в `rel_path`), добавьте в конфиг проекта:
+
+```yaml
+path: bitrix/modules
+force_rel_path: true
+```
+
+Middleware добавит префикс `path` к `rel_path` при выдаче без переиндексации. После переиндексации с корректным конфигом — удалите `force_rel_path`.
+
 *Если вы изменили `.env`, необходимо пересоздать контейнер:*
 ```bash
 docker compose up -d --force-recreate bitrix-rag-mcp
@@ -109,6 +141,11 @@ import yaml
 data = yaml.safe_load(Path("/app/configs/embeddings.yaml").read_text())
 print(data["dense"]["model"])
 PY
+```
+
+**CLI-поиск с путями:**
+```bash
+USE_ABS_PATH=true uv run bitrix-rag search "DiscountCouponsManager" --project bitrix_modules -n 3
 ```
 
 ---
